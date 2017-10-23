@@ -1,0 +1,3254 @@
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/host/gap/rble_api_gap.c
+--- a/rBLE/src/host/gap/rble_api_gap.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/host/gap/rble_api_gap.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -609,7 +609,7 @@
+  *  @retval		RBLE_STATUS_ERROR	Status ERROR
+  */
+ /******************************************************************************************/
+-RBLE_STATUS RBLE_GAP_Del_From_White_List(bool all_dev, RBLE_DEV_ADDR_INFO *dev_info)
++RBLE_STATUS RBLE_GAP_Del_From_White_List(BOOL all_dev, RBLE_DEV_ADDR_INFO *dev_info)
+ {
+ 	RBLE_STATUS 						ret = RBLE_OK;
+ 	RBLE_HEADER_t						*head_pnt;
+@@ -1294,7 +1294,7 @@
+  *  @retval		RBLE_STATUS_ERROR	Status ERROR
+  */
+ /******************************************************************************************/
+-RBLE_STATUS RBLE_GAP_Channel_Map_Req(bool update_map, uint16_t conhdl, RBLE_LE_CHNL_MAP *chmap)
++RBLE_STATUS RBLE_GAP_Channel_Map_Req(BOOL update_map, uint16_t conhdl, RBLE_LE_CHNL_MAP *chmap)
+ {
+ 	RBLE_STATUS 						ret = RBLE_OK;
+ 	RBLE_HEADER_t						*head_pnt;
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/host/rble_host.c
+--- a/rBLE/src/host/rble_host.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/host/rble_host.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -45,7 +45,7 @@
+ 
+ uint8_t cmd_buff_used_count;
+ /**************************** PRIVATE PROTOTYPE Declaration ***************************/
+-static RBLE_STATUS RBLE_Inititilize(void);
++static RBLE_STATUS RBLE_Inititilize(void * p_uart);
+ static void RBLE_Host_active_call_back(void);
+ static bool RBLE_Host_read_call_back( RSCIP_PACKET_TYPE type, uint8_t *bufptr, uint16_t size);
+ static void RBLE_Host_write_call_back( uint8_t *bufptr );
+@@ -143,7 +143,7 @@
+  *  @retval		RBLE_PARAM_ERR	Parameter Error
+  */
+ /******************************************************************************************/
+-RBLE_STATUS RBLE_Init(RBLE_INIT_CB call_back)
++RBLE_STATUS RBLE_Init(void * p_uart, RBLE_INIT_CB call_back)
+ {
+ 	RBLE_STATUS ret = RBLE_OK;
+ 	
+@@ -157,7 +157,7 @@
+ 		/* A function is stored. */
+ 		rble_init_cb = call_back;
+ 
+-		ret = RBLE_Inititilize();
++		ret = RBLE_Inititilize(p_uart);
+ 	}
+ 	return ret;
+ }
+@@ -201,9 +201,10 @@
+  *  @retval
+  */
+ /******************************************************************************************/
+-void rBLE_Run(void)
++RBLE_STATUS rBLE_Run(void)
+ {
+ 	RSCIP_RESULT_CODE	rscip_ret;
++	RBLE_STATUS 		ret;
+ 	RBLE_HEADER_t   	*header_pnt;
+ 	int_t				cmd_buff_rd_cnt_tmp;
+ 
+@@ -220,14 +221,19 @@
+ 		switch( rscip_ret ){
+ 			case RSCIP_OK:
+ 				cmd_buff_rd_cnt = cmd_buff_rd_cnt_tmp;
++				ret = RBLE_OK;
+ 				break;
+ 			case RSCIP_INVALID_PARAMTER:
++				ret = RBLE_PARAM_ERR;
+ 				break;
+ 			case RSCIP_BUSY:
++				ret = RBLE_TRANS_ERR;
+ 				break;
+ 			case RSCIP_ERROR:
++				ret = RBLE_ERR;
+ 				break;
+ 			default:
++				ret = RBLE_ERR;
+ 				break;
+ 		}
+ 	}
+@@ -253,6 +259,8 @@
+ 
+ 	/* Timer Check */
+ 	rBLE_Is_Timeup_Call_Func();
++
++	return ret;
+ }
+ 
+ /******************************************************************************************/
+@@ -378,7 +386,7 @@
+  *  @retval
+  */
+ /******************************************************************************************/
+-static RBLE_STATUS RBLE_Inititilize(void)
++static RBLE_STATUS RBLE_Inititilize(void * p_uart)
+ {
+ 	RBLE_STATUS			Ret_Status = RBLE_OK;
+ 	RSCIP_Callback_t	callback;
+@@ -414,7 +422,7 @@
+ 		callback.error_callback  = &RBLE_Host_error_call_back;
+ 	
+ 		/* RSCIP Initialize */
+-		ret = RSCIP_Initialize(&callback);
++		ret = RSCIP_Initialize(p_uart, &callback);
+ 		if ( RSCIP_ERROR == ret ) {
+ 			Ret_Status = RBLE_ERR;
+ 		}
+@@ -512,6 +520,7 @@
+ /******************************************************************************************/
+ static void RBLE_Host_write_call_back( uint8_t *bufptr )
+ {
++    (void)bufptr;
+ 	cmd_buff_used_count--;
+ }
+ 
+@@ -532,6 +541,7 @@
+ /******************************************************************************************/
+ static void RBLE_Host_error_call_back( RSCIP_RESULT_CODE error )
+ {
++    (void)error;
+ 	rble_mode = RBLE_MODE_ERROR;
+ 	rble_init_cb(RBLE_MODE_ERROR);
+ }
+@@ -611,6 +621,7 @@
+ /**********************************************************************************************/
+ void ke_evt_clear( evt_field_t Event )
+ {
++    (void)Event;
+ }
+ 
+ /**********************************************************************************************/
+@@ -663,7 +674,7 @@
+ 			
+ 			RBLE_OVER_PACKET_info.w_subhead_pnt = (RBLE_SUBHEADER_t *)subh_pnt;
+ 			
+-			RBLE_OVER_PACKET_info.w_subhead_pnt->packet_no		+= 1;
++			RBLE_OVER_PACKET_info.w_subhead_pnt->packet_no		= (uint8_t)(RBLE_OVER_PACKET_info.w_subhead_pnt->packet_no + 1);
+ 			RBLE_OVER_PACKET_info.w_subhead_pnt->packet_length	= 0 + RBLE_SUBHEADER_SIZE;
+ 			RBLE_OVER_PACKET_info.w_data_pnt					= &RBLE_OVER_PACKET_info.w_subhead_pnt->data[0];
+ 		}
+@@ -680,7 +691,7 @@
+ 	
+ 	RBLE_OVER_PACKET_info.w_data_pnt += type_size;
+ 	
+-	RBLE_OVER_PACKET_info.w_subhead_pnt->packet_length += type_size;
++	RBLE_OVER_PACKET_info.w_subhead_pnt->packet_length = (uint8_t)(RBLE_OVER_PACKET_info.w_subhead_pnt->packet_length + type_size);
+ }
+ 
+ void RBLE_Data_Set_End( void )
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/host/rble_if_api_cb.c
+--- a/rBLE/src/host/rble_if_api_cb.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/host/rble_if_api_cb.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -124,14 +124,14 @@
+ 				RBLE_OVER_PACKET_info.r_head_pnt = (RBLE_HEADER_t *)&rBLE_Over_Packet_Temp[ 0 ];
+ 				
+ 				RBLE_OVER_PACKET_info.r_head_pnt->packet_type		= subh_pnt->packet_type;
+-				RBLE_OVER_PACKET_info.r_head_pnt->opcode			= subh_pnt->opcode & (~RBLE_API_OVER_PACKET_MASKBIT16);
+-				memcpy( RBLE_OVER_PACKET_info.r_head_pnt->data, subh_pnt->data, (subh_pnt->packet_length - RBLE_SUBHEADER_SIZE) );
+-				RBLE_OVER_PACKET_info.r_data_cnt					= subh_pnt->packet_length - RBLE_SUBHEADER_SIZE;
++				RBLE_OVER_PACKET_info.r_head_pnt->opcode			= (uint16_t)(subh_pnt->opcode & UINT16_C(~RBLE_API_OVER_PACKET_MASKBIT16));
++				memcpy( RBLE_OVER_PACKET_info.r_head_pnt->data, subh_pnt->data, (size_t)(subh_pnt->packet_length - RBLE_SUBHEADER_SIZE) );
++				RBLE_OVER_PACKET_info.r_data_cnt					= (uint16_t)(subh_pnt->packet_length - RBLE_SUBHEADER_SIZE);
+ 				return RBLE_OK;
+ 			}
+ 			else{
+-				memcpy( ( RBLE_OVER_PACKET_info.r_head_pnt->data + RBLE_OVER_PACKET_info.r_data_cnt ), &subh_pnt->data[0], (subh_pnt->packet_length - RBLE_SUBHEADER_SIZE) );
+-				RBLE_OVER_PACKET_info.r_data_cnt		+= (subh_pnt->packet_length - RBLE_SUBHEADER_SIZE);
++				memcpy( ( RBLE_OVER_PACKET_info.r_head_pnt->data + RBLE_OVER_PACKET_info.r_data_cnt ), &subh_pnt->data[0], (size_t)(subh_pnt->packet_length - RBLE_SUBHEADER_SIZE) );
++				RBLE_OVER_PACKET_info.r_data_cnt		= (uint16_t)( RBLE_OVER_PACKET_info.r_data_cnt + (subh_pnt->packet_length - RBLE_SUBHEADER_SIZE));
+ 				
+ 				if( 1 == subh_pnt->packet_end ){
+ 					header_pnt	= RBLE_OVER_PACKET_info.r_head_pnt;
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/host/vs/rble_api_vs.c
+--- a/rBLE/src/host/vs/rble_api_vs.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/host/vs/rble_api_vs.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -553,7 +553,7 @@
+ 		head_pnt->packet_length = sizeof( uint8_t ) + sizeof( uint8_t ) + sizeof( uint8_t ) + sizeof( uint8_t );
+ 
+ 		if(param->cmd == RBLE_VS_FLASH_CMD_WRITE) {
+-			head_pnt->packet_length += param->size;
++			head_pnt->packet_length = (uint8_t)(head_pnt->packet_length + param->size);
+ 		}
+ 		
+ 		/* Create Command Payloard */
+@@ -823,7 +823,7 @@
+ 		/* Create Command Packet Header */
+ 		head_pnt = (RBLE_HEADER_t *)RBLE_Get_CMD_Buffer();
+ 		head_pnt->packet_type	= RBLE_PACKET_TYPE_COMMAND;
+-		head_pnt->packet_length = sizeof( uint8_t ) + sizeof( uint8_t ) + param_len;
++		head_pnt->packet_length = (uint8_t)(sizeof( uint8_t ) + sizeof( uint8_t ) + param_len);
+ 		head_pnt->opcode		= RBLE_CMD_VS_SET_PARAMS;
+ 
+ 		// Create Command Payloard
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/include/host/rble_host.h
+--- a/rBLE/src/include/host/rble_host.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/include/host/rble_host.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -30,8 +30,8 @@
+ 
+ #define		RBLE_DUMMY_GET8( p )			{ p += sizeof( uint8_t ); }
+ #define		RBLE_DATA_GET8( p, dt )			{ dt = ( uint8_t )( ( ( ( *( p + 0 ) ) << 0 ) & 0xff ) );p += sizeof( uint8_t ); }
+-#define		RBLE_DATA_GET16( p, dt )		{ dt = ( ( ( ( *( p + 0 ) ) << 0 ) & 0xff ) + ( ( ( *( p + 1 ) ) << 8 ) & 0xff00 ) );p += sizeof( uint16_t ); }
+-#define		RBLE_DATA_GET32( p, dt )		{ dt = ( ( ( ( uint32_t )( *( p + 0 ) ) << 0 ) & 0xff ) + ( ( ( uint32_t )( *( p + 1 ) ) << 8 ) & 0xff00 ) + ( ( ( uint32_t )( *( p + 2 ) ) << 16 ) & 0xff0000 ) + ( ( ( uint32_t )( *( p + 3 ) ) << 24 ) & 0xff000000 ) );p += sizeof( uint32_t ); }
++#define		RBLE_DATA_GET16( p, dt )		{ dt = ( __typeof__(dt) )( ( ( ( *( p + 0 ) ) << 0 ) & 0xff ) + ( ( ( *( p + 1 ) ) << 8 ) & 0xff00 ) );p += sizeof( uint16_t ); }
++#define		RBLE_DATA_GET32( p, dt )		{ dt = ( __typeof__(dt) )( ( ( ( uint32_t )( *( p + 0 ) ) << 0 ) & 0xff ) + ( ( ( uint32_t )( *( p + 1 ) ) << 8 ) & 0xff00 ) + ( ( ( uint32_t )( *( p + 2 ) ) << 16 ) & 0xff0000 ) + ( ( ( uint32_t )( *( p + 3 ) ) << 24 ) & 0xff000000 ) );p += sizeof( uint32_t ); }
+ 
+ /**************************** Structure Declaration ***********************************/
+ typedef struct RBLE_GAP_INFO_t {
+@@ -234,6 +234,7 @@
+ extern void RBLE_Data_Set_Start( RBLE_HEADER_t *h_pnt );
+ extern void RBLE_Data_Set( uint8_t type_size, uint32_t dt );
+ extern void RBLE_Data_Set_End( void );
++extern BOOL RBLE_Is_Cmd_Buff_Available(void);
+ 
+ /**************************** Extern Global Memory *****************************************/
+ extern RBLE_GAP_INFO	RBLE_GAP_Info;
+@@ -279,7 +280,7 @@
+ extern "C" {
+ #endif
+ void rBLE_Exit( void );
+-void rBLE_Run(void);
++RBLE_STATUS rBLE_Run(void);
+ void rBLE_Profile_Init( void );
+ bool rBLE_Is_Idle( void );
+ #ifdef __cplusplus
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/include/prf_sel.h
+--- a/rBLE/src/include/prf_sel.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/include/prf_sel.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -1,174 +1,170 @@
+-/**
+- ****************************************************************************************
+- *
+- * @file		prf_sel.h
+- *
+- * @brief	Setting of Profile Selection
+- *
+- * Copyright(C) 2013-2014 Renesas Electronics Corporation
+- *
+- * $Rev: 9242 $
+- *
+- ****************************************************************************************
+- */
+-
+-#ifndef _PRF_SEL_H_
+-#define _PRF_SEL_H_
+-
+-/**
+- * INCLUDE FILES
+- ****************************************************************************************
+- */
+-
+-/**
+- * TYPE DEFINES
+- ****************************************************************************************
+- */
+-
+-/**
+- * DEFINES
+- ****************************************************************************************
+- */
+-#ifdef USE_SAMPLE_PROFILE
+-//#define	USE_CUSTOM_DEMO
+-#endif
+-
+-/* for Profile Selection (Set to 0 if the profile is not selected.) */
+-#ifndef USE_SAMPLE_PROFILE
+-#define PRF_SEL_PXPM    1   /* Proximity Profile Monitor role */
+-#define PRF_SEL_PXPR    1   /* Proximity Profile Reporter role */
+-#define PRF_SEL_FMPL    1   /* Find Me Profile Locator role */
+-#define PRF_SEL_FMPT    1   /* Find Me Profile Target role */
+-#define PRF_SEL_HTPC    0   /* Health Thermometer Profile Collector role */
+-#define PRF_SEL_HTPT    0   /* Health Thermometer Profile Thermometer role */
+-#define PRF_SEL_BLPC    0   /* Blood Pressure Profile Collector role */
+-#define PRF_SEL_BLPS    0   /* Blood Pressure Profile Sensor role */
+-#define PRF_SEL_HGHD    0   /* HID over GATT Profile HID Device role */
+-#define PRF_SEL_HGBH    0   /* HID over GATT Profile Boot Host role */
+-#define PRF_SEL_HGRH    0   /* HID over GATT Profile Report Host role */
+-#define PRF_SEL_SPPC    0   /* Scan Parameters Profile Scan Client role */
+-#define PRF_SEL_SPPS    0   /* Scan Parameters Profile Scan Server role */
+-#define PRF_SEL_HRPC    0   /* Heart Rate Profile Collector role */
+-#define PRF_SEL_HRPS    0   /* Heart Rate Profile Sensor role */
+-#define PRF_SEL_CSCC    0   /* Cycling Speed and Cadence Profile Collector role */
+-#define PRF_SEL_CSCS    0   /* Cycling Speed and Cadence Profile Sensor role */
+-#define PRF_SEL_GLPC    0   /* Glucose Profile Collector role */
+-#define PRF_SEL_GLPS    0   /* Glucose Profile Sensor role */
+-#define PRF_SEL_CPPC    0   /* Cycling Power Profile Collector role */
+-#define PRF_SEL_CPPS    0   /* Cycling Power Profile Sensor role */
+-#define PRF_SEL_TIPC    0   /* Time Profile Client role */
+-#define PRF_SEL_TIPS    0   /* Time Profile Server role */
+-#define PRF_SEL_ANPC    1   /* Alert Notification Profile Client role */
+-#define PRF_SEL_ANPS    1   /* Alert Notification Profile Server role */
+-#define PRF_SEL_LNPS    0   /* Location and Navigation Profile Sensor role */
+-#define PRF_SEL_LNPC    0   /* Location and Navigation Profile Collector role */
+-#define PRF_SEL_PASC    0   /* Phone Alert Status Profile Client role */
+-#define PRF_SEL_PASS    0   /* Phone Alert Status Profile Server role */
+-#define PRF_SEL_RSCC    0   /* Running Speed and Cadence Profile Collector role */
+-#define PRF_SEL_RSCS    0   /* Running Speed and Cadence Profile Sensor role */
+-#else
+-#define PRF_SEL_PXPM    1   /* Proximity Profile Monitor role */
+-#define PRF_SEL_PXPR    1   /* Proximity Profile Reporter role */
+-#define PRF_SEL_FMPL    1   /* Find Me Profile Locator role */
+-#define PRF_SEL_FMPT    1   /* Find Me Profile Target role */
+-#define PRF_SEL_HTPC    1   /* Health Thermometer Profile Collector role */
+-#define PRF_SEL_HTPT    1   /* Health Thermometer Profile Thermometer role */
+-#define PRF_SEL_BLPC    1   /* Blood Pressure Profile Collector role */
+-#define PRF_SEL_BLPS    1   /* Blood Pressure Profile Sensor role */
+-#define PRF_SEL_HGHD    1   /* HID over GATT Profile HID Device role */
+-#define PRF_SEL_HGBH    1   /* HID over GATT Profile Boot Host role */
+-#define PRF_SEL_HGRH    1   /* HID over GATT Profile Report Host role */
+-#define PRF_SEL_SPPC    1   /* Scan Parameters Profile Scan Client role */
+-#define PRF_SEL_SPPS    1   /* Scan Parameters Profile Scan Server role */
+-#define PRF_SEL_HRPC    1   /* Heart Rate Profile Collector role */
+-#define PRF_SEL_HRPS    1   /* Heart Rate Profile Sensor role */
+-#define PRF_SEL_CSCC    1   /* Cycling Speed and Cadence Profile Collector role */
+-#define PRF_SEL_CSCS    1   /* Cycling Speed and Cadence Profile Sensor role */
+-#define PRF_SEL_GLPC    1   /* Glucose Profile Collector role */
+-#define PRF_SEL_GLPS    1   /* Glucose Profile Sensor role */
+-#define PRF_SEL_CPPC    1   /* Cycling Power Profile Collector role */
+-#define PRF_SEL_CPPS    1   /* Cycling Power Profile Sensor role */
+-#define PRF_SEL_TIPC    1   /* Time Profile Client role */
+-#define PRF_SEL_TIPS    1   /* Time Profile Server role */
+-#define PRF_SEL_ANPC    1   /* Alert Notification Profile Client role */
+-#define PRF_SEL_ANPS    1   /* Alert Notification Profile Server role */
+-#define PRF_SEL_LNPC    1   /* Location and Navigation Profile Collector role */
+-#define PRF_SEL_LNPS    1   /* Location and Navigation Profile Sensor role */
+-#define PRF_SEL_PASC    1   /* Phone Alert Status Profile Client role */
+-#define PRF_SEL_PASS    1   /* Phone Alert Status Profile Server role */
+-#define PRF_SEL_RSCC    1   /* Running Speed and Cadence Profile Collector role */
+-#define PRF_SEL_RSCS    1   /* Running Speed and Cadence Profile Sensor role */
+-#endif
+-
+-#if PRF_SEL_HGHD
+-#define HID_MULTI_INSTANCE
+-#endif
+-
+-/* Flag indicating if use Link Loss Service */
+-#if (PRF_SEL_PXPR)
+-    #define USE_LINK_LOSS_SERVICE           1
+-#else
+-    /* If use LLS without PXP, set to 1. */
+-    #define USE_LINK_LOSS_SERVICE           0
+-#endif
+-
+-/* Flag indicating if use Tx Power Service */
+-#if (PRF_SEL_PXPR)
+-    #define USE_TX_POWER_SERVICE            1
+-#else
+-    /* If use TPS without PXP, set to 1. */
+-    #define USE_TX_POWER_SERVICE            0
+-#endif
+-
+-/* Flag indicating if use Immediate Alert Service */
+-#if (PRF_SEL_PXPR || PRF_SEL_FMPT)
+-    #define USE_IMMEDIATE_ALERT_SERVICE     1
+-#else
+-    /* If use IAS without PXP and FMP, set to 1. */
+-    #define USE_IMMEDIATE_ALERT_SERVICE     0
+-#endif
+-
+-/* Flag indicating if use Device Information Service */
+-#if (PRF_SEL_HTPT || PRF_SEL_BLPS || PRF_SEL_HRPS || PRF_SEL_CSCS || PRF_SEL_GLPS || PRF_SEL_CPPS || PRF_SEL_LNPS || PRF_SEL_RSCS)
+-    #define USE_DEV_INFO_SERVICE            1
+-#else
+-    /* If use DIS without HTP, BLP and so on, set to 1. */
+-    #define USE_DEV_INFO_SERVICE            0
+-#endif
+-
+-/* Flag indicating if use Device Information Service (PnP characteristic) */
+-#if (PRF_SEL_HGHD)
+-    #define USE_DEV_INFO_SERVICE_PNP        1
+-#else
+-    /* If use DIS(PnP) without HOGP, set to 1. */
+-    #define USE_DEV_INFO_SERVICE_PNP        0
+-#endif
+-
+-/* Flag indicating if use Battery Service */
+-#if (PRF_SEL_HGHD || PRF_SEL_CPPS || PRF_SEL_LNPS)
+-    #define USE_BATTERY_SERVICE             1
+-#else
+-    /* If use BAS without HOGP, CPP, LNP, set to 1. */
+-    #define USE_BATTERY_SERVICE             0
+-#endif
+-
+-/* Flag indicating if use Scan Parameters Service */
+-#if (PRF_SEL_SPPS)
+-    #define USE_SCAN_PARAMETER_SERVICE      1
+-#else
+-    /* If use ScPS without ScPP, set to 1. */
+-    #define USE_SCAN_PARAMETER_SERVICE      0
+-#endif
+-
+-
+-/**
+- * STRUCTURE DECLARATIONS
+- ****************************************************************************************
+- */
+-
+-/**
+- * GLOBAL VARIABLE DECLARATIONS
+- ****************************************************************************************
+- */
+-
+-#endif /* _PRF_SEL_H_ */
++/*
++ ****************************************************************************************
++ *
++ * @file		prf_sel.h
++ *
++ * @brief	Setting of Profile Selection
++ *
++ * Copyright(C) 2013-2014 Renesas Electronics Corporation
++ *
++ * $Rev: 6019 $
++ *
++ ****************************************************************************************
++ */
++
++#ifndef _PRF_SEL_H_
++#define _PRF_SEL_H_
++
++/**
++ * INCLUDE FILES
++ ****************************************************************************************
++ */
++
++/**
++ * TYPE DEFINES
++ ****************************************************************************************
++ */
++
++/**
++ * DEFINES
++ ****************************************************************************************
++ */
++#ifdef USE_SAMPLE_PROFILE
++#define USE_CUSTOM_DEMO
++#endif
++
++/* for Profile Selection (Set to 0 if the profile is not selected.) */
++#ifndef USE_SAMPLE_PROFILE
++#define PRF_SEL_ANPS    0   /* Alert Notification Profile Server role */
++#define PRF_SEL_ANPC    0   /* Alert Notification Profile Client role */
++#define PRF_SEL_BLPS    0   /* Blood Pressure Profile Sensor role */
++#define PRF_SEL_BLPC    0   /* Blood Pressure Profile Collector role */
++#define PRF_SEL_CPPS    0   /* Cycling Power Profile Sensor role */
++#define PRF_SEL_CPPC    0   /* Cycling Power Profile Collector role */
++#define PRF_SEL_CSCS    0   /* Cycling Speed and Cadence Profile Sensor role */
++#define PRF_SEL_CSCC    0   /* Cycling Speed and Cadence Profile Collector role */
++#define PRF_SEL_FMPT    0   /* Find Me Profile Target role */
++#define PRF_SEL_FMPL    0   /* Find Me Profile Locator role */
++#define PRF_SEL_GLPS    0   /* Glucose Profile Sensor role */
++#define PRF_SEL_GLPC    0   /* Glucose Profile Collector role */
++#define PRF_SEL_HTPT    0   /* Health Thermometer Profile Thermometer role */
++#define PRF_SEL_HTPC    0   /* Health Thermometer Profile Collector role */
++#define PRF_SEL_HRPS    0   /* Heart Rate Profile Sensor role */
++#define PRF_SEL_HRPC    0   /* Heart Rate Profile Collector role */
++#define PRF_SEL_HGHD    0   /* HID over GATT Profile HID Device role */
++#define PRF_SEL_HGRH    0   /* HID over GATT Profile Report Host role */
++#define PRF_SEL_HGBH    0   /* HID over GATT Profile Boot Host role */
++#define PRF_SEL_LNPS    0   /* Location and Navigation Profile Sensor role */
++#define PRF_SEL_LNPC    0   /* Location and Navigation Profile Collector role */
++#define PRF_SEL_PASS    0   /* Phone Alert Status Profile Server role */
++#define PRF_SEL_PASC    0   /* Phone Alert Status Profile Client role */
++#define PRF_SEL_PXPR    0   /* Proximity Profile Reporter role */
++#define PRF_SEL_PXPM    0   /* Proximity Profile Monitor role */
++#define PRF_SEL_RSCS    0   /* Running Speed and Cadence Profile Sensor role */
++#define PRF_SEL_RSCC    0   /* Running Speed and Cadence Profile Collector role */
++#define PRF_SEL_SPPS    0   /* Scan Parameters Profile Scan Server role */
++#define PRF_SEL_SPPC    0   /* Scan Parameters Profile Scan Client role */
++#define PRF_SEL_TIPS    0   /* Time Profile Server role */
++#define PRF_SEL_TIPC    0   /* Time Profile Client role */
++#else
++#define PRF_SEL_ANPS    0   /* Alert Notification Profile Server role */
++#define PRF_SEL_ANPC    0   /* Alert Notification Profile Client role */
++#define PRF_SEL_BLPS    0   /* Blood Pressure Profile Sensor role */
++#define PRF_SEL_BLPC    0   /* Blood Pressure Profile Collector role */
++#define PRF_SEL_CPPS    0   /* Cycling Power Profile Sensor role */
++#define PRF_SEL_CPPC    0   /* Cycling Power Profile Collector role */
++#define PRF_SEL_CSCS    0   /* Cycling Speed and Cadence Profile Sensor role */
++#define PRF_SEL_CSCC    0   /* Cycling Speed and Cadence Profile Collector role */
++#define PRF_SEL_FMPT    0   /* Find Me Profile Target role */
++#define PRF_SEL_FMPL    0   /* Find Me Profile Locator role */
++#define PRF_SEL_GLPS    0   /* Glucose Profile Sensor role */
++#define PRF_SEL_GLPC    0   /* Glucose Profile Collector role */
++#define PRF_SEL_HTPT    0   /* Health Thermometer Profile Thermometer role */
++#define PRF_SEL_HTPC    0   /* Health Thermometer Profile Collector role */
++#define PRF_SEL_HRPS    0   /* Heart Rate Profile Sensor role */
++#define PRF_SEL_HRPC    0   /* Heart Rate Profile Collector role */
++#define PRF_SEL_HGHD    0   /* HID over GATT Profile HID Device role */
++#define PRF_SEL_HGRH    0   /* HID over GATT Profile Report Host role */
++#define PRF_SEL_HGBH    0   /* HID over GATT Profile Boot Host role */
++#define PRF_SEL_LNPS    0   /* Location and Navigation Profile Sensor role */
++#define PRF_SEL_LNPC    0   /* Location and Navigation Profile Collector role */
++#define PRF_SEL_PASS    0   /* Phone Alert Status Profile Server role */
++#define PRF_SEL_PASC    0   /* Phone Alert Status Profile Client role */
++#define PRF_SEL_PXPR    0   /* Proximity Profile Reporter role */
++#define PRF_SEL_PXPM    0   /* Proximity Profile Monitor role */
++#define PRF_SEL_RSCS    0   /* Running Speed and Cadence Profile Sensor role */
++#define PRF_SEL_RSCC    0   /* Running Speed and Cadence Profile Collector role */
++#define PRF_SEL_SPPS    0   /* Scan Parameters Profile Scan Server role */
++#define PRF_SEL_SPPC    0   /* Scan Parameters Profile Scan Client role */
++#define PRF_SEL_TIPS    0   /* Time Profile Server role */
++#define PRF_SEL_TIPC    0   /* Time Profile Client role */
++#endif
++
++/* Flag indicating if use Link Loss Service */
++    /* If use LLS without PXP, set to 1. */
++    #define USE_LINK_LOSS_SERVICE           0
++
++/* Flag indicating if use Tx Power Service */
++    /* If use TPS without PXP, set to 1. */
++    #define USE_TX_POWER_SERVICE            0
++
++/* Flag indicating if use Immediate Alert Service */
++    /* If use IAS without PXP and FMP, set to 1. */
++    #define USE_IMMEDIATE_ALERT_SERVICE     0
++
++/* Flag indicating if use Device Information Service */
++    /* If use DIS without HTP, BLP and so on, set to 1. */
++    #define USE_DEV_INFO_SERVICE            1
++
++/* Flag indicating if use Device Information Service (PnP characteristic) */
++    /* If use DIS(PnP) without HOGP, set to 1. */
++    #define USE_DEV_INFO_SERVICE_PNP        0
++
++/* Flag indicating if use Battery Service */
++    /* If use BAS without HOGP, CPP, LNP, set to 1. */
++    #define USE_BATTERY_SERVICE             0
++
++/* Flag indicating if use Scan Parameters Service */
++    /* If use ScPS without ScPP, set to 1. */
++    #define USE_SCAN_PARAMETER_SERVICE      0
++
++
++
++    #define PXPR_TABLE_SIZE     0
++    #define FMPT_TABLE_SIZE     0
++    #define HTPT_TABLE_SIZE     0
++    #define BLPS_TABLE_SIZE     0
++    #define HGHD_TABLE_SIZE     0
++    #define SPPS_TABLE_SIZE     0
++    #define HRPS_TABLE_SIZE     0
++    #define CSCS_TABLE_SIZE     0
++    #define GLPS_TABLE_SIZE     0
++    #define CPPS_TABLE_SIZE     0
++    #define TIPS_TABLE_SIZE     0
++    #define ANPS_TABLE_SIZE     0
++    #define LNPS_TABLE_SIZE     0
++    #define PASS_TABLE_SIZE     0
++    #define RSCS_TABLE_SIZE     0
++
++#define HOST_TABLE_SIZE         87
++
++#define GATT_DB_STRUCT_SIZE     6
++
++#define RBLE_TABLE_SIZE  ((PXPR_TABLE_SIZE + FMPT_TABLE_SIZE + HTPT_TABLE_SIZE + BLPS_TABLE_SIZE \
++                         + HGHD_TABLE_SIZE + SPPS_TABLE_SIZE + HRPS_TABLE_SIZE + CSCS_TABLE_SIZE \
++                         + GLPS_TABLE_SIZE + CPPS_TABLE_SIZE + TIPS_TABLE_SIZE + ANPS_TABLE_SIZE \
++                         + LNPS_TABLE_SIZE + PASS_TABLE_SIZE + RSCS_TABLE_SIZE \
++                         + HOST_TABLE_SIZE) * GATT_DB_STRUCT_SIZE)
++
++
++/**
++ * STRUCTURE DECLARATIONS
++ ****************************************************************************************
++ */
++
++/**
++ * GLOBAL VARIABLE DECLARATIONS
++ ****************************************************************************************
++ */
++
++#endif /* _PRF_SEL_H_ */
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/include/rble.h
+--- a/rBLE/src/include/rble.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/include/rble.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -23,7 +23,7 @@
+ 
+ /* rBLE Version */
+ #define	RBLE_MAJOR_VERSION			0x01
+-#define	RBLE_MINOR_VERSION			0x20
++#define	RBLE_MINOR_VERSION			0x21
+ 
+ /* Command Number Define */
+ enum RBLE_COMMAND_NO_enum {
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/include/rble_api.h
+--- a/rBLE/src/include/rble_api.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/include/rble_api.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -6236,7 +6236,7 @@
+ } RBLE_CMD_TO_RWKE_CMD;
+ 
+ /**************************** PROTOTYPE Declaration ***********************************/
+-RBLE_STATUS RBLE_Init(RBLE_INIT_CB call_back);	/* rBLE initialize */
++RBLE_STATUS RBLE_Init(void * p_uart, RBLE_INIT_CB call_back);	/* rBLE initialize */
+ 
+ /* --------------------------- Generic Access Profile --------------------------------*/
+ RBLE_STATUS RBLE_GAP_Reset(RBLE_GAP_EVENT_HANDLER gap_call_back, RBLE_SM_EVENT_HANDLER sm_call_back);					/* GAP Reset */
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/include/rble_api_custom.h
+--- a/rBLE/src/include/rble_api_custom.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/include/rble_api_custom.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -1,19 +1,22 @@
+ /**
+  ****************************************************************************************
+  *
+- * @file		rble_api_custom.h
++ * @file        rble_api_custom.h
+  *
+- * @brief	rBLE I/F Custom API Header file
++ * @brief   rBLE I/F Custom API Header file
+  *
+- * Copyright(C) 2013-2014 Renesas Electronics Corporation
++ * Copyright(C) 2013-2015 Renesas Electronics Corporation
+  *
+  * $Rev: 2461 $
+  *
++ * This file is generated by Bluetooth Developer Studio plugin.
++ *     BDS Version    : 1.0.2116.0
++ *     Script Version : 1.0.2
+  ****************************************************************************************
+  */
+ 
+-#ifndef	__RBLE_API_CUSTOM_INC__
+-#define	__RBLE_API_CUSTOM_INC__
++#ifndef __RBLE_API_CUSTOM_INC__
++#define __RBLE_API_CUSTOM_INC__
+ 
+ #include "rble_api.h"
+ 
+@@ -26,70 +29,72 @@
+  * Services are collections of characteristics and relationships to other services 
+  * that encapsulate the behavior of part of a device.
+  */
+-#define RBLE_SVC_SAMPLE_CUSTOM	{0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01}
++
++#define RBLE_SVC_SAMPLE_CUSTOM_SVC_SERVICE1 {0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}
++
+ /*
+  * Characteristics
+  *
+  * Characteristics are defined attribute types that contain a single logical value.
+  */
+-#define RBLE_CHAR_SCP_NOTIFY	{0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x02}
+-#define RBLE_CHAR_SCP_INDICATE	{0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x03}
+-#define RBLE_CHAR_SCP_INTERVAL	{0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x04}
+-#define RBLE_CHAR_SCP_NTF_LEN	{0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x05}
+-#define RBLE_CHAR_SCP_IND_LEN	{0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x06}
++#define RBLE_CHAR_SCP_SV1_CHAR1_NTF {0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01} /* sv1_char1_ntf */
++#define RBLE_CHAR_SCP_SV1_CHAR2_NTF {0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x02} /* sv1_char1_ntf */
++#define RBLE_CHAR_SCP_SV1_CHAR3_W   {0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x03}	/* sv1_char3_w */
+ 
+ 
+ /**
+- * @brief	connection type
++ * @brief   connection type
+  */
+ enum RBLE_SCP_CON_enum {
+-    RBLE_SCP_CON_CFG		= 0x00,
++    RBLE_SCP_CON_CFG        = 0x00,
+     RBLE_SCP_CON_NORMAL
+ };
+ 
+ /**
+- * @brief	Possible values for setting client configuration characteristics
++ * @brief   Possible values for setting client configuration characteristics
+  */
+ enum RBLE_SCP_CLIENT_CONFIG_enum {
+-    RBLE_SCP_STOP_NTFIND	= 0x00,
++    RBLE_SCP_STOP_NTFIND    = 0x00,
+     RBLE_SCP_START_NTF,
+     RBLE_SCP_START_IND,
+ };
+ 
+ /**
+- * @brief	Internal codes for reading a SCS characteristic with one single request
++ * @brief   Internal codes for reading a SCS characteristic with one single request
+  */
+ enum RBLE_SCP_CHAR_CODE_enum {
+-    RBLE_SCP_SCS_NTF_CFG		= 0x00,			/**< Sample Custom Notification Client Cfg. Desc */
+-    RBLE_SCP_SCS_IND_CFG,						/**< Sample Custom Indication Client Cfg. Desc */
+-    RBLE_SCP_SCS_INTERVAL,						/**< Sample Custom Interval Char */
+-    RBLE_SCP_SCS_NTF_LEN,						/**< Sample Custom Notification Length Char */
+-    RBLE_SCP_SCS_IND_LEN						/**< Sample Custom Indication Length Char */
++    RBLE_SCP_SCS_NTF_CFG        = 0x00,         /**< Sample Custom Notification Client Cfg. Desc */
++    RBLE_SCP_SCS_IND_CFG,                       /**< Sample Custom Indication Client Cfg. Desc */
++    RBLE_SCP_SCS_INTERVAL,                      /**< Sample Custom Interval Char */
++    RBLE_SCP_SCS_NTF_LEN,                       /**< Sample Custom Notification Length Char */
++    RBLE_SCP_SCS_IND_LEN,                       /**< Sample Custom Indication Length Char */
++    RBLE_SCP_SCS_CMD                            /**< Sample Custom Indication Command Char */
+ };
+ 
+-#define RBLE_SCPC_WRITE_CHAR_MAX	0x2
++#define RBLE_SCPC_WRITE_CHAR_MAX    0x14
+ 
+ /* ------------------ Sample Custom Profile ------------------*/
+ 
+ /* Sample Custom Profile Server Enable Parameter */
+ typedef struct RBLE_SCP_SERVER_PARAM_t
+ {
+-    uint16_t data_ntf_en;     /* Sample Custom Notification configuration */
+-    uint16_t data_ind_en;     /* Sample Custom Indication configuration */
++    uint16_t sv1_char1_ntf_data_ntf_en;     /* Sample Custom Notification configuration (sv1_char1_ntf) */
++    uint16_t sv1_char2_ntf_data_ntf_en;     /* Sample Custom Notification configuration (sv1_char2_ntf) */
++
+ }RBLE_SCP_SERVER_PARAM;
+ 
+ /* Sample Custom Profile Notify Info */
+ typedef struct RBLE_SCP_NOTIFY_INFO_t
+ {
+-    uint8_t data_len;	/* data length */
+-    uint8_t data[RBLE_ATTM_MAX_VALUE];		/* data */
++    uint8_t data_len;   /* data length */
++    uint8_t data[RBLE_ATTM_MAX_VALUE];      /* data */
+ }RBLE_SCP_NOTIFY_INFO;
+ 
+ /* Sample Custom Profile Ind Info */
+ typedef struct RBLE_SCP_IND_INFO_t
+ {
+-    uint8_t data_len;	/* data length */
+-    uint8_t data[RBLE_ATTM_MAX_VALUE];		/* data */
++    uint8_t data_len;   /* data length */
++    uint8_t data[RBLE_ATTM_MAX_VALUE];      /* data */
+ }RBLE_SCP_IND_INFO;
+ 
+ /* Structure containing the characteristics handles, value handles and descriptors */
+@@ -128,172 +133,95 @@
+ 
+ // Samlpe Custom Profile Call back define
+ enum RBLE_SCP_EVENT_TYPE_enum {
+-	RBLE_SCP_EVENT_SERVER_ENABLE_COMP = 0x01,		/* Server enable Complete Event */
+-	RBLE_SCP_EVENT_SERVER_DISABLE_COMP,				/* Server disable Complete Event */
+-	RBLE_SCP_EVENT_SERVER_ERROR_IND,				/* Server error Complete Event */
+-	RBLE_SCP_EVENT_SERVER_SEND_NOTIFY_COMP,			/* Server send Notify Complete Event */
+-	RBLE_SCP_EVENT_SERVER_SEND_IND_COMP,			/* Server send Indicate Complete Event */
+-	RBLE_SCP_EVENT_SERVER_CHG_INDNTF_IND,			/* Server change indicate/Notification Cfg Event */
+-	RBLE_SCP_EVENT_SERVER_CHG_CHAR_IND,				/* Server change characteristic Event */
+-	RBLE_SCP_EVENT_SERVER_COMMAND_DISALLOWED_IND,	/* Server Command disallowed Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_ENABLE_COMP = 0x81,		/* Client enable Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_DISABLE_COMP,				/* Client disable Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_ERROR_IND,				/* Client error Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_NOTIFY,					/* Client notify Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_INDICATE,					/* Client Indicate Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_READ_CHAR_RESPONSE,		/* Client read Characteristic Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_WRITE_CHAR_RESPONSE,		/* Client write Characteristic Complete Event */
+-	RBLE_SCP_EVENT_CLIENT_COMMAND_DISALLOWED_IND	/* Client Command Disallowed Complete Event */
++    RBLE_SCP_EVENT_SERVER_ENABLE_COMP = 0x01,       /* Server enable Complete Event */
++    RBLE_SCP_EVENT_SERVER_DISABLE_COMP,             /* Server disable Complete Event */
++    RBLE_SCP_EVENT_SERVER_ERROR_IND,                /* Server error Complete Event */
++    RBLE_SCP_EVENT_SERVER_SEND_NOTIFY_COMP,         /* Server send Notify Complete Event */
++    RBLE_SCP_EVENT_SERVER_SEND_IND_COMP,            /* Server send Indicate Complete Event */
++    RBLE_SCP_EVENT_SERVER_CHG_INDNTF_IND,           /* Server change indicate/Notification Cfg Event */
++    RBLE_SCP_EVENT_SERVER_CHG_CHAR_IND,             /* Server change characteristic Event */
++    RBLE_SCP_EVENT_SERVER_COMMAND_DISALLOWED_IND,   /* Server Command disallowed Complete Event */
+ };
+ 
+-typedef uint8_t		RBLE_SCP_EVENT_TYPE;
++typedef uint8_t     RBLE_SCP_EVENT_TYPE;
+ 
+ /*** Server ***/
+ typedef struct RBLE_SCPS_EVENT_t {
+-	RBLE_SCP_EVENT_TYPE		type;			/* Event Type */
+-	uint8_t					reserved;
+-	union Event_Scps_Parameter_u {
+-		/* Generic Event */
+-		RBLE_STATUS		status;
++    RBLE_SCP_EVENT_TYPE     type;           /* Event Type */
++    uint8_t                 reserved;
++    union Event_Scps_Parameter_u {
++        /* Generic Event */
++        RBLE_STATUS     status;
+ 
+-		/* RBLE_EVT_SCP_Server_Enable_Comp */
+-		struct RBLE_SCP_Server_Enable_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-	        uint8_t			    reserved;
+-		}server_enable;
++        /* RBLE_EVT_SCP_Server_Enable_Comp */
++        struct RBLE_SCP_Server_Enable_t{
++            uint16_t            conhdl;
++            RBLE_STATUS         status;
++            uint8_t             reserved;
++        }server_enable;
+ 
+-		/* RBLE_EVT_SCP_Server_Disable_Comp */
+-		struct RBLE_SCP_Server_Disable_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-	        uint8_t			    reserved;
+-			RBLE_SCP_SERVER_PARAM server_info;
+-		}server_disable;
++        /* RBLE_EVT_SCP_Server_Disable_Comp */
++        struct RBLE_SCP_Server_Disable_t{
++            uint16_t            conhdl;
++            RBLE_STATUS         status;
++            uint8_t             reserved;
++            RBLE_SCP_SERVER_PARAM server_info;
++        }server_disable;
+ 
+-		/* RBLE_EVT_SCP_Serverr_Error_Ind */
+-		struct RBLE_SCP_Server_Error_Ind_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-	        uint8_t			    reserved;
+-		}error_ind;
++        /* RBLE_EVT_SCP_Serverr_Error_Ind */
++        struct RBLE_SCP_Server_Error_Ind_t{
++            uint16_t            conhdl;
++            RBLE_STATUS         status;
++            uint8_t             reserved;
++        }error_ind;
+ 
+-		/* RBLE_EVT_SCP_SERVER_SEND_NOTIFY_COMP */
+-		struct RBLE_SCP_Server_Send_Notify_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-	        uint8_t			    reserved;
+-		}send_notify;
++        /* RBLE_EVT_SCP_SERVER_SEND_NOTIFY_COMP */
++        struct RBLE_SCP_Server_Send_Notify_t{
++            uint16_t            conhdl;
++            RBLE_STATUS         status;
++            uint8_t             reserved;
++        }send_notify;
+ 
+-		/* RBLE_EVT_SCP_SERVER_SEND_IND_COMP */
+-		struct RBLE_SCP_Server_Send_Indicate_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-	        uint8_t			    reserved;
+-		}send_ind;
++        /* RBLE_EVT_SCP_SERVER_SEND_IND_COMP */
++        struct RBLE_SCP_Server_Send_Indicate_t{
++            uint16_t            conhdl;
++            RBLE_STATUS         status;
++            uint8_t             reserved;
++        }send_ind;
+ 
+-		/* RBLE_EVT_SCP_SERVER_Cfg_Indntf_Ind */
+-		struct RBLE_SCP_Server_Cfg_Indntf_Ind_t{
+-		    uint16_t 			conhdl;
+-		    uint8_t 			char_code;
+-			uint8_t				reserved;
+-		    uint16_t 			cfg_val;
+-		}cfg_indntf;
++        /* RBLE_EVT_SCP_SERVER_Cfg_Indntf_Ind */
++        struct RBLE_SCP_Server_Cfg_Indntf_Ind_t{
++            uint16_t            conhdl;
++            uint8_t             char_code;
++            uint8_t             reserved;
++            uint16_t            cfg_val;
++        }cfg_indntf;
+ 
+-		/* RBLE_EVT_SCP_SERVER_Cfg_Indntf_Ind */
+-		struct RBLE_SCP_Server_Write_Chara_Ind_t{
+-		    uint16_t 			conhdl;
+-		    uint8_t 			char_code;
+-			uint8_t				reserved;
+-		    uint8_t 			value[RBLE_SCPC_WRITE_CHAR_MAX];
+-		}write_char;
++        /* RBLE_EVT_SCP_SERVER_Cfg_Indntf_Ind */
++        struct RBLE_SCP_Server_Write_Chara_Ind_t{
++            uint16_t            conhdl;
++            uint8_t             char_code;
++            uint8_t             reserved;
++            uint8_t             value[RBLE_SCPC_WRITE_CHAR_MAX];
++        }write_char;
+ 
+-		/* RBLE_EVT_SCP_CMD_DISALLOWED_IND */
+-		struct RBLE_SCP_Server_Command_Disallowed_Ind_t{
+-			RBLE_STATUS    status;
+-	        uint8_t		   reserved;
+-			uint16_t       opcode;
+-		}cmd_disallowed_ind;
+-	}param;
++        /* RBLE_EVT_SCP_CMD_DISALLOWED_IND */
++        struct RBLE_SCP_Server_Command_Disallowed_Ind_t{
++            RBLE_STATUS    status;
++            uint8_t        reserved;
++            uint16_t       opcode;
++        }cmd_disallowed_ind;
++    }param;
+ }RBLE_SCPS_EVENT;
+ 
+-/*** Client ***/
+-typedef struct RBLE_SCPC_EVENT_t {
+-	RBLE_SCP_EVENT_TYPE		type;			/* Event Type */
+-	uint8_t					reserved;
+-	union Event_Scpc_Parameter_u {
+-		/* Generic Event */
+-		RBLE_STATUS		status;
+ 
+-		/* RBLE_EVT_SCP_Client_Enable_Comp */
+-		struct RBLE_SCP_Client_Enable_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-            uint8_t             reserved;
+-			RBLE_SCS_CONTENT    scs;
+-		}client_enable;
+-
+-		/* RBLE_EVT_SCP_Client_Disable_Comp */
+-		struct RBLE_SCP_Client_Disable_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-            uint8_t             reserved;
+-		}client_disable;
+-
+-		/* RBLE_EVT_SCP_Client_Error_Ind */
+-		struct RBLE_SCP_Client_Error_Ind_t{
+-			uint16_t            conhdl;
+-			RBLE_STATUS         status;
+-            uint8_t             reserved;
+-		}error_ind;
+-
+-		/* RBLE_EVT_SCP_Client_Notify_Ind */
+-		struct RBLE_SCP_Client_Notify_Ind_t{
+-			uint16_t            conhdl;
+-			uint8_t             data_len;
+-			uint8_t             data[RBLE_ATTM_MAX_VALUE];
+-		}notify;
+-
+-		/* RBLE_EVT_SCP_Client_Indicate_Ind */
+-		struct RBLE_SCP_Client_Indicate_Ind_t{
+-			uint16_t            conhdl;
+-			uint8_t             data_len;
+-			uint8_t             data[RBLE_ATTM_MAX_VALUE];
+-		}ind;
+-		
+-		/* RBLE_EVT_SCP_Client_Read_Char_Response */
+-		struct RBLE_SCP_Client_Read_Char_Response_t{
+-			uint16_t           conhdl;
+-			uint8_t            att_code;
+-			RBLE_ATT_INFO_DATA data;
+-		}rd_char_resp;
+-		
+-		/* RBLE_EVT_SCP_Client_Write_Char_Response */
+-		struct RBLE_SCP_Client_Write_Char_Response_t{
+-			uint16_t           conhdl;
+-			uint8_t            att_code;
+-		}wr_char_resp;
+-
+-		/* RBLE_EVT_SCP_CMD_DISALLOWED_IND */
+-		struct RBLE_SCP_Client_Command_Disallowed_Ind_t{
+-			RBLE_STATUS    status;
+-            uint8_t        reserved;
+-			uint16_t       opcode;
+-		}cmd_disallowed_ind;
+-	}param;
+-}RBLE_SCPC_EVENT;
+-
+-typedef void ( *RBLE_SCPS_EVENT_HANDLER )( RBLE_SCPS_EVENT *event );			/* SC(Server) Event CALL BACK Declaration */
+-typedef void ( *RBLE_SCPC_EVENT_HANDLER )( RBLE_SCPC_EVENT *event );			/* SC(Client) Event CALL BACK Declaration */
++typedef void ( *RBLE_SCPS_EVENT_HANDLER )( RBLE_SCPS_EVENT *event );            /* SC(Server) Event CALL BACK Declaration */
+ 
+ /* ------------------------- Sample Custom Profile-------------------------------*/
+ RBLE_STATUS RBLE_SCP_Server_Enable( uint16_t conhdl, uint8_t con_type, RBLE_SCP_SERVER_PARAM *param, RBLE_SCPS_EVENT_HANDLER call_back );
+ RBLE_STATUS RBLE_SCP_Server_Disable( uint16_t conhdl );
+-RBLE_STATUS RBLE_SCP_Server_Send_Notify( uint16_t conhdl, RBLE_SCP_NOTIFY_INFO *notify_info );
+-RBLE_STATUS RBLE_SCP_Server_Send_Indicate( uint16_t conhdl, RBLE_SCP_IND_INFO *ind_info );
+-RBLE_STATUS RBLE_SCP_Client_Enable( uint16_t conhdl, uint8_t con_type, RBLE_SCS_CONTENT *scs, RBLE_SCPC_EVENT_HANDLER call_back );
+-RBLE_STATUS RBLE_SCP_Client_Disable( uint16_t conhdl );
+-RBLE_STATUS RBLE_SCP_Client_Read_Char( uint16_t conhdl, uint8_t char_code );
+-RBLE_STATUS RBLE_SCP_Client_Write_Char( uint16_t conhdl, uint8_t char_code, uint8_t *write_value );
++
++RBLE_STATUS RBLE_SCP_SERVICE1_Server_Send_Notify( uint16_t conhdl, uint16_t DataEvent, RBLE_SCP_NOTIFY_INFO *notify_info );
++RBLE_STATUS RBLE_SCP_SERVICE1_Server_Send_Indicate( uint16_t conhdl, RBLE_SCP_IND_INFO *ind_info );
+ 
+ #endif // __RBLE_API_CUSTOM_INC__
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/include/rble_app.h
+--- a/rBLE/src/include/rble_app.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/include/rble_app.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -7,7 +7,7 @@
+  *
+  * Copyright(C) 2013-2014 Renesas Electronics Corporation
+  *
+- * $Rev: 9368 $
++ * $Rev: 7209 $
+  *
+  ****************************************************************************************
+  */
+@@ -15,67 +15,908 @@
+ #ifndef _rBLE_APP_H
+ #define _rBLE_APP_H
+ 
+-/**
+- * INCLUDE FILES
+- ****************************************************************************************
+- */
+-#include "rble.h"
+-#include "rble_api.h"
+-#include "rble_api_custom.h"
++#include	"rble.h"
++#include	"rble_api.h"
++#include	"rble_api_custom.h"
+ 
++/**************************** Define Declaration **************************************/
++#define	ILLEGAL_NO					-1
++#define	RBLE_PARAMETER_MAX			7
++
++
++enum RBLE_L2CAP_PTS_TC_NO_enum {
++	/* L2CAP */
++	L2CAP_TC_LE_CPU_BV_01_C = 0,
++	L2CAP_TC_LE_CPU_BV_02_C,
++	L2CAP_TC_LE_CPU_BI_01_C,
++	L2CAP_TC_LE_CPU_BI_02_C,
++	L2CAP_TC_LE_REJ_BI_01_C
++};
++
++enum RBLE_GAP_PTS_TC_NO_enum {
++	/* GAP */
++	GAP_TC_BROB_BCST_BV_01_C = 100,
++	GAP_TC_BROB_BCST_BV_02_C,
++	GAP_TC_BROB_BCST_BV_03_C,
++	GAP_TC_BROB_OBSV_BV_01_C,
++	GAP_TC_BROB_OBSV_BV_02_C,
++	GAP_TC_BROB_OBSV_BV_05_C,
++	GAP_TC_DISC_NONM_BV_01_C,
++	GAP_TC_DISC_NONM_BV_02_C,
++	GAP_TC_DISC_LIMM_BV_03_C,
++	GAP_TC_DISC_LIMM_BV_04_C,
++	GAP_TC_DISC_GENM_BV_03_C,
++	GAP_TC_DISC_GENM_BV_04_C,
++	GAP_TC_DISC_LIMP_BV_01_C,
++	GAP_TC_DISC_LIMP_BV_02_C,
++	GAP_TC_DISC_LIMP_BV_03_C,
++	GAP_TC_DISC_LIMP_BV_04_C,
++	GAP_TC_DISC_LIMP_BV_05_C,
++	GAP_TC_DISC_GENP_BV_01_C,
++	GAP_TC_DISC_GENP_BV_02_C,
++	GAP_TC_DISC_GENP_BV_03_C,
++	GAP_TC_DISC_GENP_BV_04_C,
++	GAP_TC_DISC_GENP_BV_05_C,
++	GAP_TC_IDLE_NAMP_BV_01_C,
++	GAP_TC_IDLE_NAMP_BV_02_C,
++	GAP_TC_CONN_NCON_BV_01_C,
++	GAP_TC_CONN_NCON_BV_02_C,
++	GAP_TC_CONN_NCON_BV_03_C,
++	GAP_TC_CONN_DCON_BV_01_C,
++	GAP_TC_CONN_UCON_BV_01_C,
++	GAP_TC_CONN_UCON_BV_02_C,
++	GAP_TC_CONN_UCON_BV_03_C,
++	GAP_TC_CONN_ACEP_BV_01_C,
++	GAP_TC_CONN_GCEP_BV_01_C,
++	GAP_TC_CONN_GCEP_BV_02_C,
++	GAP_TC_CONN_SCEP_BV_01_C,
++	GAP_TC_CONN_DCEP_BV_01_C,
++	GAP_TC_CONN_DCEP_BV_03_C,
++	GAP_TC_CONN_CPUP_BV_01_C,
++	GAP_TC_CONN_CPUP_BV_02_C,
++	GAP_TC_CONN_CPUP_BV_03_C,
++	GAP_TC_CONN_CPUP_BV_04_C,
++	GAP_TC_CONN_CPUP_BV_05_C,
++	GAP_TC_CONN_CPUP_BV_06_C,
++	GAP_TC_CONN_TERM_BV_01_C,
++	GAP_TC_CONN_PRDA_BV_01_C,
++	GAP_TC_CONN_PRDA_BV_02_C,
++	GAP_TC_BOND_NBON_BV_01_C,
++	GAP_TC_BOND_NBON_BV_02_C,
++	GAP_TC_BOND_NBON_BV_03_C,
++	GAP_TC_BOND_BON_BV_01_C,
++	GAP_TC_BOND_BON_BV_02_C,
++	GAP_TC_BOND_BON_BV_03_C,
++	GAP_TC_BOND_BON_BV_04_C,
++	GAP_TC_SEC_AUT_BV_11_C,
++	GAP_TC_SEC_AUT_BV_12_C,
++	GAP_TC_SEC_AUT_BV_13_C,
++	GAP_TC_SEC_AUT_BV_14_C,
++	GAP_TC_SEC_AUT_BV_17_C,
++	GAP_TC_SEC_AUT_BV_19_C,
++	GAP_TC_SEC_AUT_BV_21_C,
++	GAP_TC_SEC_AUT_BV_23_C,
++	GAP_TC_SEC_AUT_BV_24_C,
++	GAP_TC_SEC_CSIGN_BV_01_C,
++	GAP_TC_SEC_CSIGN_BV_02_C,
++	GAP_TC_SEC_CSIGN_BI_01_C,
++	GAP_TC_SEC_CSIGN_BI_02_C,
++	GAP_TC_SEC_CSIGN_BI_03_C,
++	GAP_TC_SEC_CSIGN_BI_04_C,
++	GAP_TC_PRIV_CONN_BV_10_C,
++	GAP_TC_PRIV_CONN_BV_11_C,
++	GAP_TC_ADV_BV_01_C,
++	GAP_TC_ADV_BV_02_C,
++	GAP_TC_ADV_BV_03_C,
++	GAP_TC_ADV_BV_04_C,
++	GAP_TC_ADV_BV_05_C,
++	GAP_TC_ADV_BV_06_C,
++	GAP_TC_ADV_BV_07_C,
++	GAP_TC_ADV_BV_08_C,
++	GAP_TC_ADV_BV_09_C,
++	GAP_TC_ADV_BV_10_C,
++	GAP_TC_ADV_BV_11_C,
++	GAP_TC_ADV_BV_12_C,
++	GAP_TC_ADV_BV_13_C,
++	GAP_TC_ADV_BV_14_C,
++	GAP_TC_ADV_BV_15_C,
++	GAP_TC_ADV_BV_16_C,
++	GAP_TC_GAT_BV_01_C,
++	GAP_TC_GAT_BV_04_C,
++	GAP_TC_GAT_BV_05_C,
++	GAP_TC_GAT_BV_06_C
++};
++
++enum RBLE_SM_PTS_TC_NO_enum {
++	/* SM */
++	SM_TC_PROT_BV_01_C = 300,
++	SM_TC_PROT_BV_02_C,
++	SM_TC_JW_BV_01_C,
++	SM_TC_JW_BV_02_C,
++	SM_TC_JW_BV_05_C,
++	SM_TC_JW_BI_01_C,
++	SM_TC_JW_BI_02_C,
++	SM_TC_PKE_BV_01_C,
++	SM_TC_PKE_BV_02_C,
++	SM_TC_PKE_BV_03_C,
++	SM_TC_PKE_BI_01_C,
++	SM_TC_PKE_BI_02_C,
++	SM_TC_PKE_BI_03_C,
++	SM_TC_OOB_BV_01_C,
++	SM_TC_OOB_BV_02_C,
++	SM_TC_OOB_BV_03_C,
++	SM_TC_OOB_BV_04_C,
++	SM_TC_OOB_BI_01_C,
++	SM_TC_OOB_BI_02_C,
++	SM_TC_EKS_BV_01_C,
++	SM_TC_EKS_BV_02_C,
++	SM_TC_EKS_BI_01_C,
++	SM_TC_EKS_BI_02_C,
++	SM_TC_SIGN_BV_01_C,
++	SM_TC_SIGN_BV_03_C,
++	SM_TC_SIGN_BI_01_C,
++	SM_TC_KDU_BV_01_C,
++	SM_TC_KDU_BV_02_C,
++	SM_TC_KDU_BV_03_C,
++	SM_TC_KDU_BV_04_C,
++	SM_TC_KDU_BV_05_C,
++	SM_TC_KDU_BV_06_C,
++	SM_TC_KDU_BV_07_C,
++	SM_TC_SIP_BV_01_C,
++	SM_TC_SIP_BV_02_C,
++	SM_TC_SIE_BV_01_C
++};
++
++enum RBLE_GATT_PTS_TC_NO_enum {
++	/* GATT */
++	GATT_TC_GAC_SR_BV_01_C = 2000,
++	GATT_TC_GAD_CL_BV_01_C,
++	GATT_TC_GAD_CL_BV_01_I,
++	GATT_TC_GAD_CL_BV_02_C,
++	GATT_TC_GAD_CL_BV_02_I,
++	GATT_TC_GAD_CL_BV_03_C,
++	GATT_TC_GAD_CL_BV_03_I,
++	GATT_TC_GAD_CL_BV_04_C,
++	GATT_TC_GAD_CL_BV_04_I,
++	GATT_TC_GAD_CL_BV_05_C,
++	GATT_TC_GAD_CL_BV_05_I,
++	GATT_TC_GAD_CL_BV_06_C,
++	GATT_TC_GAD_CL_BV_06_I,
++	GATT_TC_GAD_SR_BV_01_C,
++	GATT_TC_GAD_SR_BV_02_C,
++	GATT_TC_GAD_SR_BV_03_C,
++	GATT_TC_GAD_SR_BV_04_C,
++	GATT_TC_GAD_SR_BV_05_C,
++	GATT_TC_GAD_SR_BV_06_C,
++	GATT_TC_GAR_CL_BV_01_C,
++	GATT_TC_GAR_CL_BI_01_C,
++	GATT_TC_GAR_CL_BI_02_C,
++	GATT_TC_GAR_CL_BI_03_C,
++	GATT_TC_GAR_CL_BI_04_C,
++	GATT_TC_GAR_CL_BI_05_C,
++	GATT_TC_GAR_CL_BV_03_C,
++	GATT_TC_GAR_CL_BI_06_C,
++	GATT_TC_GAR_CL_BI_07_C,
++	GATT_TC_GAR_CL_BI_09_C,
++	GATT_TC_GAR_CL_BI_10_C,
++	GATT_TC_GAR_CL_BI_11_C,
++	GATT_TC_GAR_CL_BV_04_C,
++	GATT_TC_GAR_CL_BI_12_C,
++	GATT_TC_GAR_CL_BI_13_C,
++	GATT_TC_GAR_CL_BI_14_C,
++	GATT_TC_GAR_CL_BI_15_C,
++	GATT_TC_GAR_CL_BI_16_C,
++	GATT_TC_GAR_CL_BI_17_C,
++	GATT_TC_GAR_CL_BV_05_C,
++	GATT_TC_GAR_CL_BI_18_C,
++	GATT_TC_GAR_CL_BI_19_C,
++	GATT_TC_GAR_CL_BI_20_C,
++	GATT_TC_GAR_CL_BI_21_C,
++	GATT_TC_GAR_CL_BI_22_C,
++	GATT_TC_GAR_CL_BV_06_C,
++	GATT_TC_GAR_CL_BI_23_C,
++	GATT_TC_GAR_CL_BI_24_C,
++	GATT_TC_GAR_CL_BI_25_C,
++	GATT_TC_GAR_CL_BI_26_C,
++	GATT_TC_GAR_CL_BI_27_C,
++	GATT_TC_GAR_CL_BV_07_C,
++	GATT_TC_GAR_CL_BI_28_C,
++	GATT_TC_GAR_CL_BI_29_C,
++	GATT_TC_GAR_CL_BI_30_C,
++	GATT_TC_GAR_CL_BI_31_C,
++	GATT_TC_GAR_CL_BI_32_C,
++	GATT_TC_GAR_CL_BI_33_C,
++	GATT_TC_GAR_CL_BI_35_C,
++	GATT_TC_GAR_SR_BV_01_C,
++	GATT_TC_GAR_SR_BI_01_C,
++	GATT_TC_GAR_SR_BI_02_C,
++	GATT_TC_GAR_SR_BI_03_C,
++	GATT_TC_GAR_SR_BI_04_C,
++	GATT_TC_GAR_SR_BI_05_C,
++	GATT_TC_GAR_SR_BV_03_C,
++	GATT_TC_GAR_SR_BI_06_C,
++	GATT_TC_GAR_SR_BI_07_C,
++	GATT_TC_GAR_SR_BI_08_C,
++	GATT_TC_GAR_SR_BI_09_C,
++	GATT_TC_GAR_SR_BI_10_C,
++	GATT_TC_GAR_SR_BI_11_C,
++	GATT_TC_GAR_SR_BV_04_C,
++	GATT_TC_GAR_SR_BI_12_C,
++	GATT_TC_GAR_SR_BI_13_C,
++	GATT_TC_GAR_SR_BI_14_C,
++	GATT_TC_GAR_SR_BI_15_C,
++	GATT_TC_GAR_SR_BI_16_C,
++	GATT_TC_GAR_SR_BI_17_C,
++	GATT_TC_GAR_SR_BV_05_C,
++	GATT_TC_GAR_SR_BI_18_C,
++	GATT_TC_GAR_SR_BI_19_C,
++	GATT_TC_GAR_SR_BI_20_C,
++	GATT_TC_GAR_SR_BI_21_C,
++	GATT_TC_GAR_SR_BI_22_C,
++	GATT_TC_GAR_SR_BV_06_C,
++	GATT_TC_GAR_SR_BI_23_C,
++	GATT_TC_GAR_SR_BI_24_C,
++	GATT_TC_GAR_SR_BI_25_C,
++	GATT_TC_GAR_SR_BI_26_C,
++	GATT_TC_GAR_SR_BI_27_C,
++	GATT_TC_GAR_SR_BV_07_C,
++	GATT_TC_GAR_SR_BV_08_C,
++	GATT_TC_GAR_SR_BI_28_C,
++	GATT_TC_GAR_SR_BI_29_C,
++	GATT_TC_GAR_SR_BI_30_C,
++	GATT_TC_GAR_SR_BI_31_C,
++	GATT_TC_GAR_SR_BI_32_C,
++	GATT_TC_GAR_SR_BI_33_C,
++	GATT_TC_GAW_CL_BV_01_C,
++	GATT_TC_GAW_CL_BV_02_C,
++	GATT_TC_GAW_CL_BV_03_C,
++	GATT_TC_GAW_CL_BI_02_C,
++	GATT_TC_GAW_CL_BI_03_C,
++	GATT_TC_GAW_CL_BI_04_C,
++	GATT_TC_GAW_CL_BI_05_C,
++	GATT_TC_GAW_CL_BI_06_C,
++	GATT_TC_GAW_CL_BV_05_C,
++	GATT_TC_GAW_CL_BI_07_C,
++	GATT_TC_GAW_CL_BI_08_C,
++	GATT_TC_GAW_CL_BI_09_C,
++	GATT_TC_GAW_CL_BI_11_C,
++	GATT_TC_GAW_CL_BI_12_C,
++	GATT_TC_GAW_CL_BI_13_C,
++	GATT_TC_GAW_CL_BV_06_C,
++	GATT_TC_GAW_CL_BI_14_C,
++	GATT_TC_GAW_CL_BI_15_C,
++	GATT_TC_GAW_CL_BI_17_C,
++	GATT_TC_GAW_CL_BI_18_C,
++	GATT_TC_GAW_CL_BI_19_C,
++	GATT_TC_GAW_CL_BV_07_C,
++	GATT_TC_GAW_CL_BV_08_C,
++	GATT_TC_GAW_CL_BI_20_C,
++	GATT_TC_GAW_CL_BI_21_C,
++	GATT_TC_GAW_CL_BI_22_C,
++	GATT_TC_GAW_CL_BI_23_C,
++	GATT_TC_GAW_CL_BI_24_C,
++	GATT_TC_GAW_CL_BV_09_C,
++	GATT_TC_GAW_CL_BI_25_C,
++	GATT_TC_GAW_CL_BI_26_C,
++	GATT_TC_GAW_CL_BI_27_C,
++	GATT_TC_GAW_CL_BI_29_C,
++	GATT_TC_GAW_CL_BI_30_C,
++	GATT_TC_GAW_CL_BI_31_C,
++	GATT_TC_GAW_CL_BI_32_C,
++	GATT_TC_GAW_SR_BV_01_C,
++	GATT_TC_GAW_SR_BV_02_C,
++	GATT_TC_GAW_SR_BI_01_C,
++	GATT_TC_GAW_SR_BV_03_C,
++	GATT_TC_GAW_SR_BI_02_C,
++	GATT_TC_GAW_SR_BI_03_C,
++	GATT_TC_GAW_SR_BI_04_C,
++	GATT_TC_GAW_SR_BI_05_C,
++	GATT_TC_GAW_SR_BI_06_C,
++	GATT_TC_GAW_SR_BV_05_C,
++	GATT_TC_GAW_SR_BI_07_C,
++	GATT_TC_GAW_SR_BI_08_C,
++	GATT_TC_GAW_SR_BI_09_C,
++	GATT_TC_GAW_SR_BI_11_C,
++	GATT_TC_GAW_SR_BI_12_C,
++	GATT_TC_GAW_SR_BI_13_C,
++	GATT_TC_GAW_SR_BV_06_C,
++	GATT_TC_GAW_SR_BV_10_C,
++	GATT_TC_GAW_SR_BI_14_C,
++	GATT_TC_GAW_SR_BI_15_C,
++	GATT_TC_GAW_SR_BI_17_C,
++	GATT_TC_GAW_SR_BI_18_C,
++	GATT_TC_GAW_SR_BV_07_C,
++	GATT_TC_GAW_SR_BV_08_C,
++	GATT_TC_GAW_SR_BI_20_C,
++	GATT_TC_GAW_SR_BI_21_C,
++	GATT_TC_GAW_SR_BI_22_C,
++	GATT_TC_GAW_SR_BI_23_C,
++	GATT_TC_GAW_SR_BI_24_C,
++	GATT_TC_GAW_SR_BV_09_C,
++	GATT_TC_GAW_SR_BI_25_C,
++	GATT_TC_GAW_SR_BI_26_C,
++	GATT_TC_GAW_SR_BI_27_C,
++	GATT_TC_GAW_SR_BI_29_C,
++	GATT_TC_GAW_SR_BI_30_C,
++	GATT_TC_GAW_SR_BI_31_C,
++	GATT_TC_GAN_CL_BV_01_C,
++	GATT_TC_GAN_SR_BV_01_C,
++	GATT_TC_GAI_CL_BV_01_C,
++	GATT_TC_GAI_SR_BV_01_C,
++	GATT_TC_GAS_CL_BV_01_C,
++	GATT_TC_GAS_SR_BV_01_C,
++	GATT_TC_GAT_CL_BV_01_C,
++	GATT_TC_GAT_CL_BV_02_C,
++	GATT_TC_GAT_SR_BV_01_C,
++	GATT_TC_GPA_CL_BV_01_C,
++	GATT_TC_GPA_CL_BV_02_C,
++	GATT_TC_GPA_CL_BV_03_C,
++	GATT_TC_GPA_CL_BV_04_C,
++	GATT_TC_GPA_CL_BV_07_C,
++	GATT_TC_GPA_SR_BV_01_C,
++	GATT_TC_GPA_SR_BV_03_C,
++	GATT_TC_GPA_SR_BV_04_C,
++	GATT_TC_GPA_SR_BV_07_C
++};
++
++enum RBLE_FMP_PTS_TC_NO_enum {
++	/* FMP */
++	FMP_TC_FMS_FL_BV_02_C = 400,
++	FMP_TC_FMS_FL_BV_03_C,
++	FMP_TC_FMF_FL_BV_01_C,
++	FMP_TC_FMF_FL_BV_02_C,
++	FMP_TC_FMF_FL_BV_03_C
++};
++
++enum RBLE_IAS_PTS_TC_NO_enum {
++	/* IAS */
++	IAS_TC_SD_BV_01_C = 500,
++	IAS_TC_DEC_BV_01_C,
++	IAS_TC_CW_BV_01_C,
++	IAS_TC_SP_BV_01_C
++};
++
++enum RBLE_PXP_PTS_TC_NO_enum {
++	/* PXP */
++	PXP_TC_PXS_PM_BV_04_C = 600,
++	PXP_TC_PXS_PM_BV_05_C,
++	PXP_TC_PXS_PM_BV_06_C,
++	PXP_TC_PXS_PM_BV_07_C,
++	PXP_TC_PXS_PM_BV_08_C,
++	PXP_TC_PXS_PM_BV_09_C,
++	PXP_TC_PXF_PM_BV_01_C,
++	PXP_TC_PXF_PM_BV_02_C,
++	PXP_TC_PXF_PM_BV_03_C,
++	PXP_TC_PXF_PM_BV_05_C,
++	PXP_TC_PXF_PM_BV_06_C,
++	PXP_TC_PXF_PM_BV_07_C
++};
++
++enum RBLE_LLS_PTS_TC_NO_enum {
++	/* LLS */
++	LLS_TC_SD_BV_01_C = 700,
++	LLS_TC_DEC_BV_01_C,
++	LLS_TC_CR_BV_01_C,
++	LLS_TC_CW_BV_01_C,
++	LLS_TC_SP_BV_01_C,
++	LLS_TC_SP_BV_02_C,
++	LLS_TC_SP_BV_03_C
++};
++
++enum RBLE_TPS_PTS_TC_NO_enum {
++	/* TPS */
++	TPS_TC_SD_BV_01_C = 800,
++	TPS_TC_DEC_BV_01_C,
++	TPS_TC_CR_BV_01_C
++};
++
++enum RBLE_HTP_PTS_TC_NO_enum {
++	/* HTP */
++	HTP_TC_THS_CO_BV_01_I = 900,
++	HTP_TC_THS_CO_BV_02_I,
++	HTP_TC_THS_CO_BV_04_I,
++	HTP_TC_THS_CO_BV_05_I,
++	HTP_TC_THS_CO_BV_07_I,
++	HTP_TC_THS_CO_BV_08_I,
++	HTP_TC_THS_CO_BV_09_I,
++	HTP_TC_THS_CO_BV_10_I,
++	HTP_TC_THS_CO_BV_11_I,
++	HTP_TC_THS_CO_BV_12_I,
++	HTP_TC_THS_CO_BV_13_I,
++	HTP_TC_THS_CO_BV_14_I,
++	HTP_TC_THF_TH_BV_01_I,
++	HTP_TC_THF_TH_BV_02_I,
++	HTP_TC_THF_CO_BV_01_I,
++	HTP_TC_THF_CO_BV_02_I,
++	HTP_TC_THF_CO_BI_01_I,
++	HTP_TC_THF_CO_BI_02_I,
++	HTP_TC_THF_CO_BI_03_I,
++	HTP_TC_THF_CO_BV_03_I,
++	HTP_TC_THF_CO_BV_04_I,
++	HTP_TC_THF_CO_BV_05_I,
++	HTP_TC_THF_CO_BI_04_I,
++	HTP_TC_THF_CO_BI_05_I,
++	HTP_TC_THF_CO_BI_06_I,
++	HTP_TC_THF_CO_BV_07_I,
++	HTP_TC_THF_CO_BV_08_I,
++	HTP_TC_THF_CO_BV_09_I,
++	HTP_TC_THF_CO_BV_10_I,
++	HTP_TC_THF_CO_BV_11_I,
++	HTP_TC_THF_CO_BV_12_I,
++	HTP_TC_THF_CO_BV_13_I,
++	HTP_TC_THF_CO_BI_07_I,
++	HTP_TC_THF_CO_BV_14_I
++};
++
++enum RBLE_HTS_PTS_TC_NO_enum {
++	/* HTS */
++	HTS_TC_SD_BV_01_C = 1000,
++	HTS_TC_DEC_BV_02_C,
++	HTS_TC_DEC_BV_03_C,
++	HTS_TC_DEC_BV_04_C,
++	HTS_TC_DEC_BV_05_C,
++	HTS_TC_DES_BV_01_C,
++	HTS_TC_DES_BV_03_C,
++	HTS_TC_DES_BV_04_C,
++	HTS_TC_DES_BV_05_C,
++	HTS_TC_CR_BV_02_C,
++	HTS_TC_CR_BV_03_C,
++	HTS_TC_CW_BV_02_C,
++	HTS_TC_CIN_BV_01_C,
++	HTS_TC_CIN_BV_02_C,
++	HTS_TC_CIN_BV_03_C,
++	HTS_TC_CI_BV_01_C,
++	HTS_TC_CI_BV_02_C,
++	HTS_TC_SP_BV_01_C,
++	HTS_TC_SP_BV_02_C,
++	HTS_TC_SP_BV_03_C,
++	HTS_TC_SP_BI_01_C
++};
++
++enum RBLE_DIS_PTS_TC_NO_enum {
++	/* DIS */
++	DIS_TC_SD_BV_01_C = 1100,
++	DIS_TC_DEC_BV_01_C,
++	DIS_TC_DEC_BV_02_C,
++	DIS_TC_DEC_BV_03_C,
++	DIS_TC_DEC_BV_04_C,
++	DIS_TC_DEC_BV_05_C,
++	DIS_TC_DEC_BV_06_C,
++	DIS_TC_DEC_BV_07_C,
++	DIS_TC_DEC_BV_08_C,
++	DIS_TC_DEC_BV_09_C,
++	DIS_TC_CR_BV_01_C,
++	DIS_TC_CR_BV_02_C,
++	DIS_TC_CR_BV_03_C,
++	DIS_TC_CR_BV_04_C,
++	DIS_TC_CR_BV_05_C,
++	DIS_TC_CR_BV_06_C,
++	DIS_TC_CR_BV_07_C,
++	DIS_TC_CR_BV_08_C,
++	DIS_TC_CR_BV_09_C
++};
++
++enum RBLE_BLP_PTS_TC_NO_enum {
++	/* BLP */
++	BLP_TC_BPD_CO_BV_01_I = 1200,
++	BLP_TC_BPD_CO_BV_02_I,
++	BLP_TC_BPD_CO_BV_04_I,
++	BLP_TC_BPD_CO_BV_05_I,
++	BLP_TC_BPD_CO_BV_06_I,
++	BLP_TC_BPD_CO_BV_07_I,
++	BLP_TC_BPD_CO_BV_08_I,
++	BLP_TC_BPD_CO_BV_09_I,
++	BLP_TC_BPD_CO_BV_10_I,
++	BLP_TC_BPF_BP_BV_01_I,
++	BLP_TC_BPF_BP_BV_02_I,
++	BLP_TC_BPF_BP_BV_03_I,
++	BLP_TC_BPF_BP_BV_04_I,
++	BLP_TC_BPF_BP_BV_05_I,
++	BLP_TC_BPF_BP_BV_08_I,
++	BLP_TC_BPF_CO_BV_09_I,
++	BLP_TC_BPF_CO_BV_10_I,
++	BLP_TC_BPF_CO_BI_01_I,
++	BLP_TC_BPF_CO_BI_02_I,
++	BLP_TC_BPF_CO_BI_03_I,
++	BLP_TC_BPF_CO_BV_11_I,
++	BLP_TC_BPF_CO_BV_12_I,
++	BLP_TC_BPF_CO_BV_13_I,
++	BLP_TC_BPF_CO_BI_04_I,
++	BLP_TC_BPF_CO_BI_05_I,
++	BLP_TC_BPF_CO_BI_06_I,
++	BLP_TC_BPF_CO_BV_14_I,
++	BLP_TC_BPF_CO_BV_15_I,
++	BLP_TC_BPF_CO_BI_07_I,
++	BLP_TC_BPF_CO_BV_16_I
++};
++
++enum RBLE_BLS_PTS_TC_NO_enum {
++	/* BLS */
++	BLS_TC_SD_BV_01_C = 1300,
++	BLS_TC_DEC_BV_01_C,
++	BLS_TC_DEC_BV_02_C,
++	BLS_TC_DEC_BV_03_C,
++	BLS_TC_DES_BV_01_C,
++	BLS_TC_DES_BV_02_C,
++	BLS_TC_CR_BV_01_C,
++	BLS_TC_CR_BV_02_C,
++	BLS_TC_CON_BV_01_C,
++	BLS_TC_CON_BV_02_C,
++	BLS_TC_CI_BV_01_C,
++	BLS_TC_CI_BV_02_C,
++	BLS_TC_CI_BV_03_C,
++	BLS_TC_CI_BV_04_C,
++	BLS_TC_CI_BV_05_C,
++	BLS_TC_CN_BV_01_C,
++	BLS_TC_CN_BV_02_C,
++	BLS_TC_CN_BV_03_C,
++	BLS_TC_CN_BV_04_C,
++	BLS_TC_CN_BV_05_C,
++	BLS_TC_SP_BV_01_C
++};
++
++enum RBLE_HOGP_PTS_TC_NO_enum {
++	/* HOGP */
++	HOGP_TC_HGDS_HH_BV_01_C = 1400,
++	HOGP_TC_HGDS_HH_BV_02_C,
++	HOGP_TC_HGDS_HH_BV_03_C,
++	HOGP_TC_HGDS_HD_BV_01_C,
++	HOGP_TC_HGDS_HD_BV_02_C,
++	HOGP_TC_HGDR_RH_BV_01_C,
++	HOGP_TC_HGDC_RH_BV_01_C,
++	HOGP_TC_HGDC_RH_BV_02_C,
++	HOGP_TC_HGDC_RH_BV_03_C,
++	HOGP_TC_HGDC_RH_BV_04_C,
++	HOGP_TC_HGDC_RH_BV_05_C,
++	HOGP_TC_HGDC_RH_BV_06_C,
++	HOGP_TC_HGDC_RH_BV_07_C,
++	HOGP_TC_HGDC_HH_BV_08_C,
++	HOGP_TC_HGDC_BH_BV_09_C,
++	HOGP_TC_HGDC_BH_BV_10_C,
++	HOGP_TC_HGDC_BH_BV_11_C,
++	HOGP_TC_HGDC_BH_BV_12_C,
++	HOGP_TC_HGDC_BH_BV_13_C,
++	HOGP_TC_HGDC_HH_BV_14_C,
++	HOGP_TC_HGDC_HH_BV_15_C,
++	HOGP_TC_HGDC_HH_BV_16_C,
++	HOGP_TC_HGRF_RH_BV_01_C,
++	HOGP_TC_HGRF_RH_BV_02_C,
++	HOGP_TC_HGRF_RH_BV_03_C,
++	HOGP_TC_HGRF_RH_BV_04_C,
++	HOGP_TC_HGRF_RH_BV_05_C,
++	HOGP_TC_HGRF_RH_BV_06_C,
++	HOGP_TC_HGRF_RH_BV_07_C,
++	HOGP_TC_HGRF_RH_BV_08_C,
++	HOGP_TC_HGRF_RH_BV_09_C,
++	HOGP_TC_HGRF_HH_BV_10_C,
++	HOGP_TC_HGRF_HH_BV_11_C,
++	HOGP_TC_HGRF_HH_BV_12_C,
++	HOGP_TC_HGRF_BH_BV_13_C,
++	HOGP_TC_HGRF_BH_BV_14_C,
++	HOGP_TC_HGRF_BH_BV_15_C,
++	HOGP_TC_HGRF_BH_BV_16_C,
++	HOGP_TC_HGRF_BH_BV_17_C,
++	HOGP_TC_HGRF_HH_BV_18_C,
++	HOGP_TC_HGWF_RH_BV_01_C,
++	HOGP_TC_HGWF_RH_BV_02_C,
++	HOGP_TC_HGWF_RH_BV_03_C,
++	HOGP_TC_HGWF_RH_BV_04_C,
++	HOGP_TC_HGWF_RH_BV_05_C,
++	HOGP_TC_HGWF_RH_BV_06_C,
++	HOGP_TC_HGWF_RH_BV_07_C,
++	HOGP_TC_HGWF_BH_BV_08_C,
++	HOGP_TC_HGWF_BH_BV_09_C,
++	HOGP_TC_HGWF_BH_BV_10_C,
++	HOGP_TC_HGWF_BH_BV_11_C,
++	HOGP_TC_HGCF_RH_BV_01_C,
++	HOGP_TC_HGCF_RH_BV_02_C,
++	HOGP_TC_HGCF_BH_BV_03_C,
++	HOGP_TC_HGCF_BH_BV_04_C,
++	HOGP_TC_HGCF_BH_BV_05_C,
++	HOGP_TC_HGCF_BH_BV_06_C,
++	HOGP_TC_HGNF_RH_BV_01_C,
++	HOGP_TC_HGNF_BH_BV_02_C,
++	HOGP_TC_HGNF_BH_BV_03_C,
++	HOGP_TC_HGNF_BH_BI_01_C,
++	HOGP_TC_HGNF_RH_BI_01_C,
++	HOGP_TC_HGNF_RH_BI_02_C
++};
++
++enum RBLE_HIDS_PTS_TC_NO_enum {
++	/* HIDS */
++	HIDS_TC_SD_BV_01_C = 1500,
++	HIDS_TC_DEC_BV_01_C,
++	HIDS_TC_DEC_BV_02_C,
++	HIDS_TC_DEC_BV_03_C,
++	HIDS_TC_DEC_BV_04_C,
++	HIDS_TC_DEC_BV_05_C,
++	HIDS_TC_DEC_BV_06_C,
++	HIDS_TC_DEC_BV_07_C,
++	HIDS_TC_DEC_BV_08_C,
++	HIDS_TC_DES_BV_01_C,
++	HIDS_TC_DES_BV_02_C,
++	HIDS_TC_DES_BV_03_C,
++	HIDS_TC_DES_BV_04_C,
++	HIDS_TC_DES_BV_05_C,
++	HIDS_TC_CR_BV_01_C,
++	HIDS_TC_CR_BV_02_C,
++	HIDS_TC_CR_BV_03_C,
++	HIDS_TC_CR_BV_04_C,
++	HIDS_TC_CR_BV_05_C,
++	HIDS_TC_CR_BV_06_C,
++	HIDS_TC_CR_BV_07_C,
++	HIDS_TC_CR_BV_08_C,
++	HIDS_TC_LCR_BV_01_C,
++	HIDS_TC_LCR_BV_02_C,
++	HIDS_TC_LCR_BV_03_C,
++	HIDS_TC_LCR_BV_04_C,
++	HIDS_TC_CON_BV_01_C,
++	HIDS_TC_CON_BV_02_C,
++	HIDS_TC_CON_BV_03_C,
++	HIDS_TC_CN_BV_01_C,
++	HIDS_TC_CN_BV_02_C,
++	HIDS_TC_CN_BV_03_C,
++	HIDS_TC_CW_BV_01_C,
++	HIDS_TC_CW_BV_02_C,
++	HIDS_TC_CW_BV_03_C,
++	HIDS_TC_CW_BV_04_C,
++	HIDS_TC_CW_BV_05_C,
++	HIDS_TC_CW_BV_06_C,
++	HIDS_TC_CW_BV_07_C,
++	HIDS_TC_CW_BV_08_C,
++	HIDS_TC_CW_BV_09_C,
++	HIDS_TC_CW_BV_10_C,
++	HIDS_TC_CW_BV_11_C,
++	HIDS_TC_CW_BV_12_C,
++	HIDS_TC_DR_BV_01_C,
++	HIDS_TC_DR_BV_02_C,
++	HIDS_TC_DR_BV_03_C,
++	HIDS_TC_DR_BV_04_C,
++	HIDS_TC_DR_BV_05_C,
++	HIDS_TC_DW_BV_01_C,
++	HIDS_TC_DW_BV_02_C,
++	HIDS_TC_DW_BV_03_C,
++	HIDS_TC_SP_BV_01_C
++};
++
++enum RBLE_BAS_PTS_TC_NO_enum {
++	/* BAS */
++	BAS_TC_SD_BV_01_C = 1600,
++	BAS_TC_DEC_BV_01_C,
++	BAS_TC_DES_BV_01_C,
++	BAS_TC_DES_BV_02_C,
++	BAS_TC_CR_BV_01_C,
++	BAS_TC_CON_BV_01_C,
++	BAS_TC_CN_BV_01_C
++};
++
++enum RBLE_SCPP_PTS_TC_NO_enum {
++	/* ScPP */
++	SCPP_TC_SPDS_SC_BV_01_C = 1700,
++	SCPP_TC_SPDC_SC_BV_01_C,
++	SCPP_TC_SPDC_SC_BV_02_C,
++	SCPP_TC_SPDC_SC_BV_03_C,
++	SCPP_TC_SPWF_SC_BV_01_C,
++	SCPP_TC_SPCF_SC_BV_01_C,
++	SCPP_TC_SPNF_SC_BV_01_C
++};
++
++enum RBLE_SCPS_PTS_TC_NO_enum {
++	/* ScPS */
++	SCPS_TC_SD_BV_01_C = 1800,
++	SCPS_TC_DEC_BV_01_C,
++	SCPS_TC_DEC_BV_02_C,
++	SCPS_TC_DES_BV_01_C,
++	SCPS_TC_CW_BV_01_C,
++	SCPS_TC_DR_BV_01_C,
++	SCPS_TC_DW_BV_01_C,
++	SCPS_TC_CON_BV_01_C,
++	SCPS_TC_CN_BV_01_C
++};
++
++enum RBLE_HRP_PTS_TC_NO_enum {
++	/* HRP */
++	HRP_TC_HRD_CO_BV_01_I = 1900,
++	HRP_TC_HRD_CO_BV_02_I,
++	HRP_TC_HRD_HR_BV_03_I,
++	HRP_TC_HRD_CO_BV_04_I,
++	HRP_TC_HRD_CO_BV_05_I,
++	HRP_TC_HRD_CO_BV_07_I,
++	HRP_TC_HRD_CO_BV_08_I,
++	HRP_TC_HRD_CO_BV_09_I,
++	HRP_TC_HRD_CO_BV_10_I,
++	HRP_TC_HRF_HR_BV_01_I,
++	HRP_TC_HRF_HR_BV_02_I,
++	HRP_TC_HRF_CO_BV_03_I,
++	HRP_TC_HRF_CO_BV_04_I,
++	HRP_TC_HRF_CO_BI_01_I,
++	HRP_TC_HRF_CO_BI_02_I,
++	HRP_TC_HRF_CO_BV_05_I,
++	HRP_TC_HRF_CO_BV_06_I,
++	HRP_TC_HRF_CO_BI_03_I,
++	HRP_TC_HRF_CO_BV_07_I,
++	HRP_TC_HRF_CO_BV_08_I
++};
++
++enum RBLE_HRS_PTS_TC_NO_enum {
++	/* HRS */
++	HRS_TC_SD_BV_01_C = 2000,
++	HRS_TC_DEC_BV_01_C,
++	HRS_TC_DEC_BV_02_C,
++	HRS_TC_DEC_BV_03_C,
++	HRS_TC_DES_BV_01_C,
++	HRS_TC_CR_BV_01_C,
++	HRS_TC_CW_BV_01_C,
++	HRS_TC_CW_BI_01_C,
++	HRS_TC_CON_BV_01_C,
++	HRS_TC_CN_BV_01_C,
++	HRS_TC_CN_BV_02_C,
++	HRS_TC_CN_BV_03_C,
++	HRS_TC_CN_BV_04_C,
++	HRS_TC_CN_BV_05_C
++};
++
++enum RBLE_CSCP_PTS_TC_NO_enum {
++	/* CSCP */
++	CSCP_TC_CSCD_BV_01_I = 2100,
++	CSCP_TC_CSCD_BV_02_I,
++	CSCP_TC_CSCD_BV_05_I,
++	CSCP_TC_CSCD_BV_06_I,
++	CSCP_TC_CSCD_BV_07_I,
++	CSCP_TC_CSCD_BV_08_I,
++	CSCP_TC_CSCD_BV_09_I,
++	CSCP_TC_CSCD_BV_10_I,
++	CSCP_TC_CSCD_BV_11_I,
++	CSCP_TC_CSCD_BV_12_I,
++	CSCP_TC_CSCF_CSC_BV_01_I,	/* 2110 */
++	CSCP_TC_CSCF_CSC_BV_02_I,
++	CSCP_TC_CSCF_CSC_BV_03_I,
++	CSCP_TC_CSCF_CSC_BV_04_I,
++	CSCP_TC_CSCF_CSC_BV_05_I,
++	CSCP_TC_CSCF_CSC_BV_06_I,
++	CSCP_TC_CSCF_CSC_BV_07_I,
++	CSCP_TC_CSCF_CSC_BV_08_I,
++	CSCP_TC_CSCF_CSC_BV_09_I,
++	CSCP_TC_CSCF_CSC_BV_10_I,
++	CSCP_TC_CSCF_CSC_BI_01_I,	/* 2120 */
++	CSCP_TC_CSCF_CSC_BI_02_I,
++	CSCP_TC_CSCF_CSC_BV_11_I,
++	CSCP_TC_CSCF_CSC_BV_12_I,
++	CSCP_TC_CSCF_CSC_BI_03_I,
++	CSCP_TC_CSCF_CSC_BV_13_I,
++	CSCP_TC_CSCF_CSC_BI_04_I,
++	CSCP_TC_CSCF_CSC_BV_14_I,
++	CSCP_TC_CSCF_CSC_BV_16_I,
++	CSCP_TC_SPS_CO_BV_01_I,
++	CSCP_TC_SPS_CO_BV_02_I,		/* 2130 */
++	CSCP_TC_SPL_CO_BV_01_I,
++	CSCP_TC_SPU_CO_BV_01_I,
++	CSCP_TC_SPE_CO_BI_01_I,
++	CSCP_TC_SPE_CO_BI_02_I,
++	CSCP_TC_SPE_CO_BI_03_I,
++	CSCP_TC_SPE_CO_BI_04_I
++};
++
++enum RBLE_CSCS_PTS_TC_NO_enum {
++	/* CSCS */
++	CSCS_TC_SD_BV_01_C = 2200
++};
++
++enum RBLE_LNS_PTS_TC_NO_enum {
++	/* LNS */
++	LNS_TC_CR_BV_0X_C = 2400
++};
++
++typedef struct RBLE_GAP_Observation_Enable_t {
++	uint16_t			mode;
++	RBLE_SCANNING_INFO	scan_info;
++} RBLE_OBSERVATION_ENABLE_PARAM;
++
++typedef struct RBLE_GAP_Broadcast_Enable_t {
++	uint16_t			disc_mode;
++	uint16_t			conn_mode;
++	RBLE_ADV_INFO		adv_info;
++} RBLE_BROADCAST_ENABLE_PARAM;
++
++typedef struct RBLE_GAP_Privacy_Feature_Param_t {
++	uint8_t				priv_flag;
++	uint8_t				set_to_ll;
++} RBLE_GAP_PRIV_FEAT_PRAM;
++
++typedef struct RBLE_FMP_Locator_Set_Alert_Param_t {
++	uint8_t					alert_lvl;
++} RBLE_FMP_LOCATOR_SET_ALERT_PARAM;
++
++typedef struct RBLE_HTP_Therm_Enable_Param_t {
++	uint8_t					sec_lvl;
++	uint8_t					con_type;
++	RBLE_HTP_THERM_PARAM	param;
++} RBLE_HTP_THERM_ENABLE_PARAM;
++
++typedef struct RBLE_BLP_Write_Char_t {
++	uint8_t				char_code;
++	uint16_t			cfg_val;
++} RBLE_BLP_WRITE_CHAR_PARAM;
++
++typedef struct RBLE_HGP_HDevice_Enable_Param_t {
++	uint8_t					sec_lvl;
++	uint8_t					con_type;
++	RBLE_HGP_DEVICE_PARAM	param;
++} RBLE_HGP_HDEVICE_ENABLE_PARAM;
++
++typedef struct RBLE_HGP_HDevice_Send_Report_Param_t {
++	uint8_t					inst_idx;
++	RBLE_HGP_REPORT_DESC	report;
++} RBLE_HGP_HDEVICE_SEND_REPORT_PARAM;
++
++typedef struct RBLE_HGP_BHost_Enable_Param_t {
++	uint8_t					con_type;
++	uint8_t					hids_inst_num;
++	uint8_t					bas_inst_num;
++	RBLE_HIDS_CONTENT		hids[RBLE_HIDS_INST_MAX];
++	RBLE_DIS11_CONTENT		dis;
++	RBLE_BAS_CONTENT		bas[RBLE_BAS_INST_MAX];
++} RBLE_HGP_BHost_ENABLE_PARAM;
++
++typedef struct RBLE_HGP_BHost_Send_Report_Param_t {
++	uint8_t					inst_idx;
++	RBLE_HGP_REPORT_DESC	report;
++} RBLE_HGP_BHOST_SEND_REPORT_PARAM;
++
++typedef struct RBLE_HGP_BHost_Data_Output_Param_t {
++	uint8_t					inst_idx;
++	RBLE_HGP_REPORT_DESC	report;
++} RBLE_HGP_BHOST_DATA_OUTPUT_PARAM;
++
++typedef struct RBLE_HGP_RHost_Enable_Param_t {
++	uint8_t					con_type;
++	uint8_t					hids_inst_num;
++	uint8_t					bas_inst_num;
++	RBLE_HIDS_CONTENT		hids[RBLE_HIDS_INST_MAX];
++	RBLE_DIS11_CONTENT		dis;
++	RBLE_BAS_CONTENT		bas[RBLE_BAS_INST_MAX];
++} RBLE_HGP_RHost_ENABLE_PARAM;
++
++typedef struct RBLE_HGP_RHost_Send_Report_Param_t {
++	uint8_t					inst_idx;
++	RBLE_HGP_REPORT_DESC	report;
++} RBLE_HGP_RHOST_SEND_REPORT_PARAM;
++
++typedef struct RBLE_HGP_RHost_Data_Output_Param_t {
++	uint8_t					inst_idx;
++	RBLE_HGP_REPORT_DESC	report;
++} RBLE_HGP_RHOST_DATA_OUTPUT_PARAM;
++
++/**************************** PUBLIC Memory Declaration *******************************/
++extern uint32_t							RBLE_Parameter_Arg[ RBLE_PARAMETER_MAX ];
++extern uint_t							RBLE_Parameter_Cnt;
++extern const RBLE_OBSERVATION_ENABLE_PARAM		RBLE_Observation_Enable_Param[4];
++extern const RBLE_BROADCAST_ENABLE_PARAM		RBLE_Broadcast_Enable_Param[22];
++extern const RBLE_BOND_PARAM					RBLE_Start_Bond_Param[14];
++extern const RBLE_BOND_RESP_PARAM				RBLE_Bond_Resp_Param[17];
++extern const uint8_t					SCP_Char_Code[5];
++extern const uint8_t					CPP_Wr_Char_Code[5];
++extern const int8_t						CPP_Control_Point_Disp_Info[16][33];
++extern const int8_t						LNP_Control_Point_Disp_Info[9][22];
++extern RBLE_BLP_WRITE_CHAR_PARAM 		RBLE_BLP_Write_Char_Param[4];
++extern const RBLE_GAP_PRIV_FEAT_PRAM	RBLE_GAP_Privacy_Feature_Param[6];
++extern RBLE_FMP_LOCATOR_SET_ALERT_PARAM	RBLE_FMP_Locator_Set_Alert_Param[2];
++extern RBLE_HTP_THERM_ENABLE_PARAM		RBLE_HTP_Therm_Enable_Param[2];
++extern RBLE_HGP_HDEVICE_ENABLE_PARAM	RBLE_HGP_HDevice_Enable_Param[1];
++extern RBLE_HGP_HDEVICE_SEND_REPORT_PARAM	RBLE_HGP_HDevice_Send_Report_Param[3];
++extern RBLE_HGP_BHost_ENABLE_PARAM		RBLE_HGP_BHost_Enable_Param[1];
++extern RBLE_HGP_BHOST_SEND_REPORT_PARAM	RBLE_HGP_BHost_Send_Report_Param[3];
++extern RBLE_HGP_BHOST_DATA_OUTPUT_PARAM	RBLE_HGP_BHost_Data_Output_Param[1];
++extern RBLE_HGP_RHost_ENABLE_PARAM		RBLE_HGP_RHost_Enable_Param[1];
++extern RBLE_HGP_RHOST_SEND_REPORT_PARAM	RBLE_HGP_RHost_Send_Report_Param[3];
++extern RBLE_HGP_RHOST_DATA_OUTPUT_PARAM	RBLE_HGP_RHost_Data_Output_Param[1];
++
++/**************************** PROTOTYPE Declaration ***********************************/
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+-
+-/**
+- * DEFINES
+- ****************************************************************************************
+- */
+-#define ILLEGAL_NO                          -1
+-#define RBLE_PARAMETER_MAX                  5
+-
+-#define ILLEGAL_CONNECTION_HANDLE           0xffff
+-
+-
+-/*
+- * EXTERN DECLARATIONS
+- ****************************************************************************************
+- */
+-extern uint32_t             RBLE_Parameter_Arg[ RBLE_PARAMETER_MAX ];
+-extern uint_t               RBLE_Parameter_Cnt;
+-extern uint16_t             Connection_Handle;
+-
+-/*
+- * FUNCTION DECLARATIONS
+- ****************************************************************************************
+- */
+ BOOL RBLE_App_Init( void );
+-
+-void BdAddress_Disp( RBLE_BD_ADDR *Addr_p );
+-void AdvRepot_Disp( RBLE_ADV_REPORT *Report_p );
+-void Uuid128_Disp( uint8_t *p );
+-void RBLE_Status_Disp( RBLE_STATUS Status );
+-void KeyDisp( struct RBLE_EVT_SM_Key_t *Key_p );
+-void RandomDataDisp( RBLE_RAND_NB *p );
+-void KeyDataDisp( RBLE_KEY_VALUE *p );
+-char_t *Get_Status_Str( RBLE_STATUS Status );
+-void ATT_Info_Disp( RBLE_ATT_INFO_DATA *p );
+-void Print_Dump( uint8_t *p, uint16_t len );
+-char_t  *Get_Att_Code_Str( uint8_t att_code );
+-void Select_Param_No_Disp(uint32_t no);
+-void Connection_Handle_Disp( uint16_t conhdl );
+-void Illegal_Connection_Print( void );
+-int_t RBLE_Get_Random( void );
+-
+-float FLOAT2float( uint32_t float_val );
+-float SFLOAT2float( uint16_t sfloat_val );
+-void DIS_handle_Info_Disp(RBLE_DIS_CONTENT *dis);
+-void CPP_Broadcast_Rcv(RBLE_ADV_REPORT *adv_rep_p );
+-void BAS_handle_Info_Disp(RBLE_BATS_CONTENT *bas);
+-void TIP_Time_Disp(RBLE_DATE_TIME *stamp);
+-
+-
+ #ifdef __cplusplus
+ }
+ #endif
+-#endif /* _rBLE_APP_H */
++#endif	/* _rBLE_APP_H */
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/rscip/rscip.c
+--- a/rBLE/src/rscip/rscip.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/rscip/rscip.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -74,7 +74,7 @@
+  */
+ /******************************************************************************************/
+ 
+-RSCIP_RESULT_CODE RSCIP_Initialize(RSCIP_Callback_t *callback){
++RSCIP_RESULT_CODE RSCIP_Initialize(void * p_uart, RSCIP_Callback_t *callback){
+ 	RSCIP_RESULT_CODE	Ret_Status;
+ 
+ 
+@@ -92,7 +92,7 @@
+ 	RSCIP_Packet_Ctr_Init();
+ 
+ 	//	Initialization of an UART.
+-	if ( TRUE == RSCIP_Uart_Init() ) {
++	if ( TRUE == RSCIP_Uart_Init(p_uart) ) {
+ 	
+ 		//	Initialization of TIMER.
+ 		RSCIP_Timer_Init();
+@@ -175,7 +175,7 @@
+ 		if (NULL == write_packet[i].bufp) {
+ 			if (0 != write_packet[i].size) {
+ 				write_packet[i].size = 0;
+-				tx_packet_ctr.wsize -= 1;
++				tx_packet_ctr.wsize = (uint8_t)(tx_packet_ctr.wsize - 1);
+ 			}
+ 		}
+ 	}
+@@ -188,10 +188,10 @@
+ 	write_packet[tx_packet_ctr.wp].size = size;
+ 	write_packet[tx_packet_ctr.wp].bufp = bufptr;
+ 
+-	tx_packet_ctr.rsize += 1;
+-	tx_packet_ctr.wsize += 1;
++	tx_packet_ctr.rsize = (uint8_t)(tx_packet_ctr.rsize + 1);
++	tx_packet_ctr.wsize = (uint8_t)(tx_packet_ctr.wsize + 1);
+ 
+-	tx_packet_ctr.wp += 1;
++	tx_packet_ctr.wp = (uint8_t)(tx_packet_ctr.wp + 1);
+ 	if (RSCIP_WINDOW_SIZE <= tx_packet_ctr.wp) {
+ 		tx_packet_ctr.wp = 0;
+ 	}
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/rscip/rscip.h
+--- a/rBLE/src/rscip/rscip.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/rscip/rscip.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -102,7 +102,7 @@
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+-RSCIP_RESULT_CODE RSCIP_Initialize(RSCIP_Callback_t *callback);
++RSCIP_RESULT_CODE RSCIP_Initialize(void * p_uart, RSCIP_Callback_t *callback);
+ RSCIP_RESULT_CODE RSCIP_Write(
+ 							  RSCIP_PACKET_TYPE		type,
+ 							  uint8_t				*bufptr,
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/rscip/rscip_cntl.c
+--- a/rBLE/src/rscip/rscip_cntl.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/rscip/rscip_cntl.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -201,13 +201,13 @@
+ 
+ 	//	It's confirmed whether there was next request-to-send during a transmission.
+ 	if (RSCIP_REQ_SYNC_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_SYNC_RES_MESSAGE)) {	//	SYNC-RES 
+-		rscip.req_message &= ~RSCIP_REQ_SYNC_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_SYNC_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_SYNC_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_SYNC_RES);
+ 	}
+ 
+ 	if (RSCIP_REQ_SYNC_MESSAGE == (rscip.req_message & RSCIP_REQ_SYNC_MESSAGE)) {	//	SYNC 
+-		rscip.req_message &= ~RSCIP_REQ_SYNC_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_SYNC_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_SYNC_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_SYNC);
+ 	}
+@@ -242,19 +242,19 @@
+ 
+ 	//	It's confirmed whether there was next request-to-send during a transmission.
+ 	if (RSCIP_REQ_SYNC_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_SYNC_RES_MESSAGE)) {	//	SYNC-RES 
+-		rscip.req_message &= ~RSCIP_REQ_SYNC_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_SYNC_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_SYNC_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_SYNC_RES);
+ 	}
+ 
+ 	if (RSCIP_REQ_SYNC_MESSAGE == (rscip.req_message & RSCIP_REQ_SYNC_MESSAGE)) {	//	SYNC 
+-		rscip.req_message &= ~RSCIP_REQ_SYNC_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_SYNC_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_SYNC_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_SYNC);
+ 	}
+ 
+ 	if (RSCIP_REQ_CONFIG_MESSAGE == (rscip.req_message & RSCIP_REQ_CONFIG_MESSAGE)) {	//	CONFIG 
+-		rscip.req_message &= ~RSCIP_REQ_CONFIG_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_CONFIG_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_CONFIG_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_CONFIG);
+ 	}
+@@ -299,13 +299,13 @@
+ 
+ 	//	It's confirmed whether there was next request-to-send during a transmission.
+ 	if (RSCIP_REQ_SYNC_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_SYNC_RES_MESSAGE)) {	//	SYNC-RES 
+-		rscip.req_message &= ~RSCIP_REQ_SYNC_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_SYNC_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_CONFIG_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_SYNC_RES);
+ 	}
+ 
+ 	if (RSCIP_REQ_CONFIG_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_CONFIG_RES_MESSAGE)) {	//	CONFIG-RES 
+-		rscip.req_message &= ~RSCIP_REQ_CONFIG_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_CONFIG_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_CONFIG_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_CONFIG_RES);
+ 	}
+@@ -347,13 +347,13 @@
+ 
+ 	//	It's confirmed whether there was next request-to-send during a transmission.
+ 	if (RSCIP_REQ_SYNC_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_SYNC_RES_MESSAGE)) {	//	SYNC-RES 
+-		rscip.req_message &= ~RSCIP_REQ_SYNC_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_SYNC_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_CONFIG_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_SYNC_RES);
+ 	}
+ 
+ 	if (RSCIP_REQ_CONFIG_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_CONFIG_RES_MESSAGE)) {	//	CONFIG-RES 
+-		rscip.req_message &= ~RSCIP_REQ_CONFIG_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_CONFIG_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_CONFIG_RES_WAIT;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_CONFIG_RES);
+ 	}
+@@ -405,12 +405,12 @@
+ 
+ 	//	It's confirmed whether there was next request-to-send during a transmission.
+ 	if (RSCIP_REQ_CONFIG_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_CONFIG_RES_MESSAGE)) {	//	CONFIG-RES 
+-		rscip.req_message &= ~RSCIP_REQ_CONFIG_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_CONFIG_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_ACTIVE;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_CONFIG_RES);
+ 	}
+ 	if (RSCIP_REQ_ACK_MESSAGE == (rscip.req_message & RSCIP_REQ_ACK_MESSAGE)) {	//	ACK 
+-		rscip.req_message &= ~RSCIP_REQ_ACK_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_ACK_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_ACTIVE;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_ACK);
+ 	}
+@@ -462,12 +462,12 @@
+ 
+ 	//	It's confirmed whether there was next request-to-send during a transmission.
+ 	if (RSCIP_REQ_CONFIG_RES_MESSAGE == (rscip.req_message & RSCIP_REQ_CONFIG_RES_MESSAGE)) {	//	CONFIG-RES 
+-		rscip.req_message &= ~RSCIP_REQ_CONFIG_RES_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_CONFIG_RES_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_ACTIVE;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_CONFIG_RES);
+ 	}
+ 	if (RSCIP_REQ_ACK_MESSAGE == (rscip.req_message & RSCIP_REQ_ACK_MESSAGE)) {	//	ACK 
+-		rscip.req_message &= ~RSCIP_REQ_ACK_MESSAGE;
++		rscip.req_message = (uint8_t)(rscip.req_message & ~RSCIP_REQ_ACK_MESSAGE);
+ 		rscip.tx_end_state = RSCIP_STATE_ACTIVE;
+ 		RSCIP_Packet_Tx(RSCIP_REQ_ACK);
+ 	}
+@@ -534,7 +534,7 @@
+ 		esc_code_count = 0;
+ 		for (i=0; i<uart_rp->rx_length; i++) {
+ 			if (ESC_CODE == uart_rp->rx_buf[i]) {
+-				esc_code_count += 1;
++				esc_code_count = (uint16_t)(esc_code_count + 1);
+ 
+ 				i++;
+ 				switch (uart_rp->rx_buf[i]) {
+@@ -608,7 +608,7 @@
+ 			}
+ 
+ 			message  = (uint16_t)link_packet_buf[RSCIP_PACKET_HEADER_SIZE];
+-			message |= (uint16_t)link_packet_buf[RSCIP_PACKET_HEADER_SIZE + 1] << RSCIP_PAYLOAD_LENGTH_SIFT;
++			message  = (uint16_t)(message | (uint16_t)link_packet_buf[RSCIP_PACKET_HEADER_SIZE + 1] << RSCIP_PAYLOAD_LENGTH_SIFT);
+ 
+ 			switch (message) {
+ 
+@@ -674,7 +674,7 @@
+ 
+ static void Uart_Next_Data_Check(void)
+ {
+-	uart_ctr.rp += 1;
++	uart_ctr.rp = (uint8_t)(uart_ctr.rp + 1);
+ 	if ((RSCIP_WINDOW_SIZE + 1) <= uart_ctr.rp) {
+ 		uart_ctr.rp = 0;
+ 	}
+@@ -746,9 +746,9 @@
+ 
+ 						write_packet[tx_packet_ctr.ap].bufp = NULL;
+ 						callback_func.write_callback(buf);
+-						ack_ctr.count -= 1;
++						ack_ctr.count = (uint8_t)(ack_ctr.count - 1);
+ 						//	Transmission buffer release
+-						tx_packet_ctr.ap += 1;
++						tx_packet_ctr.ap = (uint8_t)(tx_packet_ctr.ap + 1);
+ 						if (RSCIP_WINDOW_SIZE <= tx_packet_ctr.ap) {
+ 							tx_packet_ctr.ap = 0;
+ 						}
+@@ -796,9 +796,9 @@
+ 						write_packet[tx_packet_ctr.ap].bufp = NULL;
+ 
+ 						callback_func.write_callback(buf);
+-						ack_ctr.count -= 1;
++						ack_ctr.count = (uint8_t)(ack_ctr.count - 1);
+ 						//	Transmission buffer release
+-						tx_packet_ctr.ap += 1;
++						tx_packet_ctr.ap = (uint8_t)(tx_packet_ctr.ap + 1);
+ 						if (RSCIP_WINDOW_SIZE <= tx_packet_ctr.ap) {
+ 							tx_packet_ctr.ap = 0;
+ 						}
+@@ -909,9 +909,9 @@
+ 								write_packet[tx_packet_ctr.ap].bufp = NULL;
+ 
+ 								callback_func.write_callback(buf);
+-								ack_ctr.count -= 1;
++								ack_ctr.count = (uint8_t)(ack_ctr.count - 1);
+ 								//	Transmission buffer release
+-								tx_packet_ctr.ap += 1;
++								tx_packet_ctr.ap = (uint8_t)(tx_packet_ctr.ap + 1);
+ 								if (RSCIP_WINDOW_SIZE <= tx_packet_ctr.ap) {
+ 									tx_packet_ctr.ap = 0;
+ 								}
+@@ -946,7 +946,7 @@
+ 				//	notify of data reception complete.
+ 				ack_req = callback_func.read_callback( ( RSCIP_PACKET_TYPE )header->packet_type, &read_packet_buf[RSCIP_PACKET_HEADER_SIZE], header->payload_length);
+ 				if (TRUE == ack_req) {
+-					rx.seq_num += 1;
++					rx.seq_num = (uint8_t)(rx.seq_num + 1);
+ 					if (RSCIP_PACKET_MAX < rx.seq_num) {
+ 						rx.seq_num = 0;
+ 					}
+@@ -1384,7 +1384,7 @@
+ 
+ 		case RSCIP_STATE_SYNC_RES_WAIT:
+ 			//	SYNC Transmission
+-			retry_count.sync_res += 1;
++			retry_count.sync_res = (uint8_t)(retry_count.sync_res + 1);
+ 			if (RSCIP_MAX_RETRY_COUNT < retry_count.sync_res) {
+ 				rscip.error_state = RSCIP_SYNC_TX_ERROR;
+ 				//	SYNC Transmission Error Notice
+@@ -1399,7 +1399,7 @@
+ 
+ 		case RSCIP_STATE_CONFIG_RES_WAIT:
+ 			//	CONFIG Transmission
+-			retry_count.config_res += 1;
++			retry_count.config_res = (uint8_t)(retry_count.config_res + 1);
+ 			if (RSCIP_MAX_RETRY_COUNT < retry_count.config_res) {
+ 				rscip.error_state = RSCIP_CONFIG_TX_ERROR;
+ 				//	CONFIG Transmission Error Notice
+@@ -1414,7 +1414,7 @@
+ 
+ 		case RSCIP_STATE_ACK_WAIT:
+ 			//	Packet Transmission
+-			retry_count.ack += 1;
++			retry_count.ack = (uint8_t)(retry_count.ack + 1);
+ 			if (RSCIP_MAX_RETRY_COUNT < retry_count.ack) {
+ 				rscip.error_state = RSCIP_PACKET_TX_ERROR;
+ 				//	Packet Transmission Error Notice
+@@ -1425,7 +1425,7 @@
+ 			else if ( 0 != ack_ctr.count ) {
+ 				tx_packet_ctr.rp = tx_packet_ctr.ap;
+ 				tx.seq_num = write_packet[tx_packet_ctr.rp].seq_num;
+-				tx_packet_ctr.rsize += ack_ctr.count;
++				tx_packet_ctr.rsize = (uint8_t)(tx_packet_ctr.rsize + ack_ctr.count);
+ 				ack_ctr.count = 0;
+ 
+ 				RSCIP_Packet_Tx(RSCIP_REQ_PACKET);
+@@ -1504,20 +1504,20 @@
+ 
+ 				write_packet[tx_packet_ctr.rp].seq_num = tx.seq_num;
+ 
+-				tx.seq_num += 1;
++				tx.seq_num = (uint8_t)(tx.seq_num + 1);
+ 				if (RSCIP_PACKET_MAX < tx.seq_num) {
+ 					tx.seq_num = 0;
+ 				}
+ 
+ 				ack_ctr.buf[ack_ctr.count]= tx.seq_num;
+-				ack_ctr.count += 1;
++				ack_ctr.count = (uint8_t)(ack_ctr.count + 1);
+ 
+-				tx_packet_ctr.rp += 1;
++				tx_packet_ctr.rp = (uint8_t)(tx_packet_ctr.rp + 1);
+ 				if (RSCIP_WINDOW_SIZE <= tx_packet_ctr.rp) {
+ 					tx_packet_ctr.rp = 0;
+ 				}
+ 
+-				tx_packet_ctr.rsize -= 1;
++				tx_packet_ctr.rsize = (uint8_t)(tx_packet_ctr.rsize - 1);
+ 			}
+ 			return;
+ 
+@@ -1697,7 +1697,7 @@
+ static uint16_t RSCIP_Config_Packet_Make(uint8_t *link_packet)
+ {
+ 	link_packet[2] = RSCIP_CONFIG_PAYLOAD_LENGTH;
+-	link_packet[2] += RSCIP_CONFIG_FIELD_LENGTH;
++	link_packet[2] = (uint8_t)(link_packet[2] + RSCIP_CONFIG_FIELD_LENGTH);
+ 	link_packet[6] = rscip.config;
+ 	link_packet[3] = ( uint8_t )(~(link_packet[0] + link_packet[1] + link_packet[2]) + 1);	//	Complement of 2
+ 	link_packet[4] = ( uint8_t )(RSCIP_CONFIG_MESSAGE & RSCIP_MESSAGE_MASK);
+@@ -1805,4 +1805,3 @@
+    	}
+     return( checksum );
+ }
+-
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/rscip/rscip_ext.h
+--- a/rBLE/src/rscip/rscip_ext.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/rscip/rscip_ext.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -46,18 +46,10 @@
+ extern BOOL ke_evt_set( evt_field_t Event );
+ extern void ke_evt_clear( evt_field_t Event );
+ 
+-extern BOOL serial_init(void);
++extern BOOL serial_init(void * p_uart);
+ extern void serial_exit( void );
+-#if defined(_USE_REL_RL78)| defined(_USE_IAR_RL78) | defined(_USE_CCRL_RL78)
+-extern void serial_write( const uint8_t *bufptr, const uint16_t size);
+-#else
+-extern BOOL serial_write(uint8_t *bufptr, uint16_t size);
+-#endif
+-#if defined(_USE_REL_RL78)| defined(_USE_IAR_RL78) | defined(_USE_CCRL_RL78)
+-extern void serial_read( uint8_t *bufptr, const uint16_t size );
+-#else
+-extern BOOL serial_read(uint8_t *bufptr, uint16_t size );
+-#endif
++extern BOOL serial_write( uint8_t *bufptr, uint16_t size );
++extern BOOL serial_read( uint8_t *bufptr, uint16_t size );
+ #ifdef __cplusplus
+ }
+ #endif
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/rscip/rscip_uart.c
+--- a/rBLE/src/rscip/rscip_uart.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/rscip/rscip_uart.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -81,12 +81,12 @@
+  */
+ /******************************************************************************************/
+ 
+-BOOL RSCIP_Uart_Init(void)
++BOOL RSCIP_Uart_Init(void * p_uart)
+ {
+ 	BOOL		Ret;
+ 	uint8_t		i;
+ 
+-	Ret = serial_init();
++	Ret = serial_init(p_uart);
+ 	if ( TRUE == Ret ) {
+ 	
+ 		for (i = 0; i < (RSCIP_WINDOW_SIZE + 1); i++) {
+@@ -469,7 +469,7 @@
+ 				uart_wp->rx_length = packet_length;
+ 				uart_wp->rx_flag = TRUE;
+ 
+-				uart_ctr.wp += 1;
++				uart_ctr.wp = (uint8_t)(uart_ctr.wp + 1);
+ 				if ((RSCIP_WINDOW_SIZE + 1) <= uart_ctr.wp) {
+ 					uart_ctr.wp = 0;
+ 				}
+@@ -484,7 +484,7 @@
+ 				ke_evt_set( EVT_RSCIP_RX_DONE_BIT );
+ 			}
+ 			else {
+-				packet_length += 1;
++				packet_length = (uint16_t)(packet_length + 1);
+ 				serial_read(&uart_wp->rx_buf[packet_length], 1);
+ 			}
+ 			break;
+@@ -496,7 +496,7 @@
+ 				uart_wp->rx_length = packet_length;
+ 				uart_wp->rx_flag = TRUE;
+ 
+-				uart_ctr.wp += 1;
++				uart_ctr.wp = (uint8_t)(uart_ctr.wp + 1);
+ 				if ((RSCIP_WINDOW_SIZE + 1) <= uart_ctr.wp) {
+ 					uart_ctr.wp = 0;
+ 				}
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/rscip/rscip_uart.h
+--- a/rBLE/src/rscip/rscip_uart.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/rscip/rscip_uart.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -93,7 +93,7 @@
+ extern "C" {
+ #endif
+ 
+-BOOL RSCIP_Uart_Init(void);
++BOOL RSCIP_Uart_Init(void * p_uart);
+ void RSCIP_Uart_Write(uint8_t *headerptr, uint8_t *bufptr, uint8_t checksum, uint16_t size);
+ void RSCIP_Uart_Read_Start(void);
+ 
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/sample_profile/db_handle.h
+--- a/rBLE/src/sample_profile/db_handle.h	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/sample_profile/db_handle.h	Mon Oct 23 16:17:34 2017 -0400
+@@ -1,13 +1,13 @@
+ /**
+  ****************************************************************************************
+  *
+- * @file		db_handle.h
++ * @file	db_handle.h
+  *
+  * @brief	Definition of Database Handle for Profile
+  *
+  * Copyright(C) 2013-2014 Renesas Electronics Corporation
+  *
+- * $Rev: 6019 $
++ * $Rev: 9820 $
+  *
+  ****************************************************************************************
+  */
+diff -r 25a5af47aa71 -r 2ced69ae7fe3 rBLE/src/sample_profile/scp/scps.c
+--- a/rBLE/src/sample_profile/scp/scps.c	Mon Oct 23 18:31:03 2017 -0400
++++ b/rBLE/src/sample_profile/scp/scps.c	Mon Oct 23 16:17:34 2017 -0400
+@@ -7,10 +7,13 @@
+  *
+  * Copyright (C) RivieraWaves 2009-2012
+  *
+- * Copyright(C) 2013-2014 Renesas Electronics Corporation
++ * Copyright(C) 2013-2015 Renesas Electronics Corporation
+  *
+  * $Rev: 2311 $
+  *
++ * This file is generated by Bluetooth Developer Studio plugin.
++ *     BDS Version    : 1.0.2095.0
++ *     Script Version : 1.0.2
+  ****************************************************************************************
+  */
+ 
+@@ -27,472 +30,471 @@
+  ****************************************************************************************
+  */
+ 
+-#include	"rble.h"
+-#include	"rble_app.h"
+-#include	"db_handle.h"
++#include    "rble.h"
++#include    "rble_app.h"
++#include    "db_handle.h"
+ 
+-#include	<stdio.h>
+-#include	<string.h>
++#include    <stdio.h>
++#include    <string.h>
+ 
+ 
+ #ifdef USE_SAMPLE_PROFILE
+ 
+-#define DATA_EVENT_MAX 3
++#define DATA_EVENT_MAX 20
+ 
+ typedef enum SCPS_STATUS_enum {
+-	SCPS_STATUS_IDLE,
+-	SCPS_STATUS_CONNECTED
++    SCPS_STATUS_IDLE,
++    SCPS_STATUS_CONNECTED
+ }SCPS_STASUS;
+ 
+ typedef struct SCPS_INFO_t {
+-	SCPS_STASUS status;
+-	RBLE_SCPS_EVENT_HANDLER callback;
+-	uint16_t conhdl;
+-	uint16_t notify_en;
+-	uint16_t ind_en;
+-	uint16_t set_data_hdl[DATA_EVENT_MAX];
+-	uint16_t wp;
+-	uint16_t rp;
+-	RBLE_GATT_EVENT event_data;
++    SCPS_STASUS status;
++    RBLE_SCPS_EVENT_HANDLER callback;
++    uint16_t conhdl;
++    uint16_t sv1_char1_ntf_notify_en;
++    uint16_t sv1_char2_ntf_notify_en;
++    uint16_t set_data_hdl[DATA_EVENT_MAX];
++    uint16_t wp;
++    uint16_t rp;
++    RBLE_GATT_EVENT event_data;
+ }SCPS_INFO;
+ 
+ SCPS_INFO scps_info = {
+-	SCPS_STATUS_IDLE,		/* status */
+-	NULL,					/* callback */
+-	0,						/* conhdl */
+-	RBLE_SCP_STOP_NTFIND,	/* notify en */
+-	RBLE_SCP_STOP_NTFIND,	/* ind en */
+-	{0},					/* set_data_hdl */
+-	0,						/* wp */
+-	0,						/* rp */
+-	{0}						/* event_data */
++    SCPS_STATUS_IDLE,       /* status */
++    NULL,                   /* callback */
++    0,                      /* conhdl */
++    RBLE_SCP_START_NTF,   /* sv1_char1_ntf_notify en */
++    RBLE_SCP_START_NTF,   /* sv1_char2_ntf_notify en */
++    {0},                    /* set_data_hdl */
++    0,                      /* wp */
++    0,                      /* rp */
++    {0}                     /* event_data */
+ };
+ 
++static void service1_scps_send_chg_IndNtf(uint8_t char_code, uint8_t *value);
++
+ static void scps_send_enable_complete(RBLE_STATUS status);
+-static void scps_send_chg_IndNtf(uint8_t char_code, uint8_t *value);
+ static void scps_send_chg_char(uint8_t char_code, uint8_t *value, uint8_t val_len);
+ static RBLE_STATUS scps_set_data(uint16_t val_hdl, uint8_t *data, uint16_t data_len);
+ static void scps_send_response(uint16_t att_hdl, RBLE_STATUS result);
+ static void gatt_callback( RBLE_GATT_EVENT *event );
+ 
+ /*
+- * FUNCTION DEFINITIONS
++ * FUNCTION DEFINITIONS( Common )
+  ****************************************************************************************
+  */
++
+ RBLE_STATUS RBLE_SCP_Server_Enable( uint16_t conhdl,
+-									uint8_t  con_type,
+-									RBLE_SCP_SERVER_PARAM *param,
+-									RBLE_SCPS_EVENT_HANDLER call_back )
++                                    uint8_t  con_type,
++                                    RBLE_SCP_SERVER_PARAM *param,
++                                    RBLE_SCPS_EVENT_HANDLER call_back )
+ {
+-	RBLE_STATUS result = RBLE_OK;
+-	
+-	if(scps_info.status == SCPS_STATUS_IDLE)
+-	{
+-		/* parameter check */
+-		if( (param != NULL) && (call_back != NULL) )
+-		{
+-			/* initialise GATT */
+-			result = RBLE_GATT_Enable(gatt_callback);
+-			if (result == RBLE_OK)
+-			{
+-				/* initialise scps info */
+-				memset(&scps_info,0,sizeof(scps_info));
+-				scps_info.callback = call_back;
+-				scps_info.conhdl   = conhdl;
+-				
+-				if (con_type == RBLE_SCP_CON_NORMAL)
+-				{
+-					scps_info.notify_en = param->data_ntf_en;
+-					scps_info.ind_en    = param->data_ind_en;
+-				}
+-				else
+-				{
+-					scps_info.notify_en = RBLE_SCP_STOP_NTFIND;
+-					scps_info.ind_en    = RBLE_SCP_STOP_NTFIND;
+-				}
+-				/* set notify client configuration */
+-				result = scps_set_data(SCS_HDL_NOTIFY_CFG, (uint8_t*)&scps_info.notify_en, 2);
+-			}
+-		}
+-		else
+-		{
+-			/* parameter error */
+-			result = RBLE_PARAM_ERR;
+-		}
+-	}
+-	else
+-	{
+-		/* status error */
+-		result = RBLE_STATUS_ERROR;
+-	}
+-	
+-	return result;
++    RBLE_STATUS result = RBLE_OK;
++
++    /* Flag Initialize */
++    
++    if(scps_info.status == SCPS_STATUS_IDLE)
++    {
++        /* parameter check */
++        if( (param != NULL) && (call_back != NULL) )
++        {
++            /* initialise GATT */
++            result = RBLE_GATT_Enable(gatt_callback);
++            if (result == RBLE_OK)
++            {
++                /* initialise scps info */
++                memset(&scps_info,0,sizeof(scps_info));
++                scps_info.callback = call_back;
++                scps_info.conhdl   = conhdl;
++                
++                if (con_type == RBLE_SCP_CON_NORMAL)
++                {
++                    scps_info.sv1_char1_ntf_notify_en = param->sv1_char1_ntf_data_ntf_en;
++                    scps_info.sv1_char2_ntf_notify_en = param->sv1_char2_ntf_data_ntf_en;
++                }
++                else
++                {
++                    scps_info.sv1_char1_ntf_notify_en = RBLE_SCP_STOP_NTFIND;
++                    scps_info.sv1_char2_ntf_notify_en = RBLE_SCP_STOP_NTFIND;
++                }
++
++                /* set notify client configuration */
++                result = scps_set_data(SCS_HDL_SERVICE1_SV1_CHAR1_NTF_CFG, (uint8_t*)&scps_info.sv1_char1_ntf_notify_en, 2);
++
++                /* set notify client configuration */
++                result = scps_set_data(SCS_HDL_SERVICE1_SV1_CHAR2_NTF_CFG, (uint8_t*)&scps_info.sv1_char2_ntf_notify_en, 2);
++
++            }
++        }
++        else
++        {
++            /* parameter error */
++            result = RBLE_PARAM_ERR;
++        }
++    }
++    else
++    {
++        /* status error */
++        result = RBLE_STATUS_ERROR;
++    }
++    
++    return result;
+ }
+ 
+ RBLE_STATUS RBLE_SCP_Server_Disable( uint16_t conhdl )
+ {
+-	RBLE_STATUS result = RBLE_OK;
+-	RBLE_SCPS_EVENT		 scp_event;
+-	
+-	if(scps_info.status == SCPS_STATUS_CONNECTED)
+-	{
+-		if(conhdl == scps_info.conhdl)
+-		{
+-			scps_info.status = SCPS_STATUS_IDLE;
++    RBLE_STATUS result = RBLE_OK;
++    RBLE_SCPS_EVENT      scp_event;
++    
++    if(scps_info.status == SCPS_STATUS_CONNECTED)
++    {
++        if(conhdl == scps_info.conhdl)
++        {
++            scps_info.status = SCPS_STATUS_IDLE;
+ 
+-			/* disable complete callback */
+-			scp_event.type = RBLE_SCP_EVENT_SERVER_DISABLE_COMP;
+-			scp_event.param.server_disable.conhdl = conhdl;
+-			scp_event.param.server_disable.status = RBLE_OK;
+-			
+-			scps_info.callback(&scp_event);
+-		}
+-		else
+-		{
+-			/* parameter error */
+-			result = RBLE_PARAM_ERR;
+-		}
+-	}
+-	else
+-	{
+-		/* status error */
+-		result = RBLE_STATUS_ERROR;
+-	}
+-	
+-	return result;
++            /* disable complete callback */
++            scp_event.type = RBLE_SCP_EVENT_SERVER_DISABLE_COMP;
++            scp_event.param.server_disable.conhdl = conhdl;
++            scp_event.param.server_disable.status = RBLE_OK;
++
++            scps_info.callback(&scp_event);
++        }
++        else
++        {
++            /* parameter error */
++            result = RBLE_PARAM_ERR;
++        }
++    }
++    else
++    {
++        /* status error */
++        result = RBLE_STATUS_ERROR;
++    }
++
++    return result;
+ }
+ 
+-RBLE_STATUS RBLE_SCP_Server_Send_Notify( uint16_t conhdl,
+-										 RBLE_SCP_NOTIFY_INFO *notify_info )
++
++/*
++ * FUNCTION DEFINITIONS( Service1 )
++ ****************************************************************************************
++ */
++
++RBLE_STATUS RBLE_SCP_SERVICE1_Server_Send_Notify(uint16_t conhdl, uint16_t  DataEvent, RBLE_SCP_NOTIFY_INFO *notify_info )
+ {
+-	RBLE_STATUS result;
+-	
+-	if(scps_info.status == SCPS_STATUS_CONNECTED)
+-	{
+-		if ((conhdl == scps_info.conhdl) &&
+-			(scps_info.notify_en & RBLE_SCP_START_NTF))
+-		{
+-			/* set data */
+-			result = scps_set_data(SCS_HDL_NOTIFY_VAL, notify_info->data, notify_info->data_len);
+-		}
+-		else
+-		{
+-			/* parameter error */
+-			result = RBLE_PARAM_ERR;
+-		}
+-	}
+-	else
+-	{
+-		/* status error */
+-		result = RBLE_STATUS_ERROR;
+-	}
+-	
+-	return result;
++    RBLE_STATUS result = RBLE_STATUS_ERROR;
++
++
++    if(scps_info.status == SCPS_STATUS_CONNECTED)
++    {
++        if ( conhdl == scps_info.conhdl )
++        {
++            if ((DataEvent == SCS_HDL_SERVICE1_SV1_CHAR1_NTF_VAL) && (notify_info->data_len == 14))
++            {
++				if( scps_info.sv1_char1_ntf_notify_en & RBLE_SCP_START_NTF )
++				{
++                	/* set data */
++	                result = scps_set_data(SCS_HDL_SERVICE1_SV1_CHAR1_NTF_VAL, notify_info->data, notify_info->data_len);
++                }
++            }
++            else if ((DataEvent == SCS_HDL_SERVICE1_SV1_CHAR2_NTF_VAL) && (notify_info->data_len == 16))
++            {
++				if( scps_info.sv1_char2_ntf_notify_en & RBLE_SCP_START_NTF )
++               	{
++        	        /* set data */
++                	result = scps_set_data(SCS_HDL_SERVICE1_SV1_CHAR2_NTF_VAL, notify_info->data, notify_info->data_len);
++                }
++            }
++        }
++
++    }
++    else
++    {
++        /* status error */
++        result = RBLE_STATUS_ERROR;
++    }
++    
++    return result;
+ }
+ 
+-RBLE_STATUS RBLE_SCP_Server_Send_Indicate( uint16_t conhdl,
+-										   RBLE_SCP_IND_INFO *ind_info )
++static void service1_scps_send_chg_IndNtf(uint8_t char_code, uint8_t *value)
+ {
+-	RBLE_STATUS result;
+-	
+-	if(scps_info.status == SCPS_STATUS_CONNECTED)
+-	{
+-		if ((conhdl == scps_info.conhdl) &&
+-			(scps_info.ind_en & RBLE_SCP_START_IND))
+-		{
+-			/* set data */
+-			result = scps_set_data(SCS_HDL_IND_VAL, ind_info->data, ind_info->data_len);
+-		}
+-		else
+-		{
+-			/* parameter error */
+-			result = RBLE_PARAM_ERR;
+-		}
+-	}
+-	else
+-	{
+-		/* status error */
+-		result = RBLE_STATUS_ERROR;
+-	}
+-	
+-	return result;
++    RBLE_SCPS_EVENT scp_event;
++    uint16_t tmp_data;
++    
++    memcpy(&tmp_data, value, 2);
++    if(char_code == RBLE_SCP_SCS_NTF_CFG)
++    {
++        switch(scps_info.set_data_hdl[scps_info.rp])
++        {
++            case SCS_HDL_SERVICE1_SV1_CHAR1_NTF_CFG:
++                scps_info.sv1_char1_ntf_notify_en = tmp_data;
++                break;
++            case SCS_HDL_SERVICE1_SV1_CHAR2_NTF_CFG:
++                scps_info.sv1_char2_ntf_notify_en = tmp_data;
++                break;
++            default:
++                break;
++        }
++    }
++    else
++    {
++        switch(scps_info.set_data_hdl[scps_info.rp])
++        {
++
++            default:
++                break;
++        }
++
++    }
++    /* send write callback */
++    scp_event.type = RBLE_SCP_EVENT_SERVER_CHG_INDNTF_IND;
++    scp_event.param.cfg_indntf.conhdl    = scps_info.conhdl;
++    scp_event.param.cfg_indntf.char_code = char_code;
++    scp_event.param.cfg_indntf.cfg_val   = tmp_data;
++    scps_info.callback(&scp_event);
+ }
+ 
+ static void scps_send_enable_complete(RBLE_STATUS status)
+ {
+-	RBLE_SCPS_EVENT	scp_event;
+-	
+-	if(status == RBLE_OK)
+-	{
+-		scps_info.status = SCPS_STATUS_CONNECTED;
+-	}
+-	/* enable complete callback */
+-	scp_event.type = RBLE_SCP_EVENT_SERVER_ENABLE_COMP;
+-	scp_event.param.server_enable.conhdl = scps_info.conhdl;
+-	scp_event.param.server_enable.status = status;
+-	
+-	scps_info.callback(&scp_event);
+-}
+-
+-static void scps_send_chg_IndNtf(uint8_t char_code, uint8_t *value)
+-{
+-	RBLE_SCPS_EVENT	scp_event;
+-	uint16_t tmp_data;
+-	
+-	memcpy(&tmp_data, value, 2);
+-	if(char_code == RBLE_SCP_SCS_NTF_CFG)
+-	{
+-		scps_info.notify_en = tmp_data;
+-	}
+-	else
+-	{
+-		scps_info.ind_en = tmp_data;
+-	}
+-	/* send write callback */
+-	scp_event.type = RBLE_SCP_EVENT_SERVER_CHG_INDNTF_IND;
+-	scp_event.param.cfg_indntf.conhdl	 = scps_info.conhdl;
+-	scp_event.param.cfg_indntf.char_code = char_code;
+-	scp_event.param.cfg_indntf.cfg_val	 = tmp_data;
+-	scps_info.callback(&scp_event);
++    RBLE_SCPS_EVENT scp_event;
++    
++    if(status == RBLE_OK)
++    {
++        scps_info.status = SCPS_STATUS_CONNECTED;
++    }
++    /* enable complete callback */
++    scp_event.type = RBLE_SCP_EVENT_SERVER_ENABLE_COMP;
++    scp_event.param.server_enable.conhdl = scps_info.conhdl;
++    scp_event.param.server_enable.status = status;
++    
++    scps_info.callback(&scp_event);
+ }
+ 
+ static void scps_send_chg_char(uint8_t char_code, uint8_t *value, uint8_t val_len)
+ {
+-	RBLE_SCPS_EVENT	scp_event;
+-	scp_event.type = RBLE_SCP_EVENT_SERVER_CHG_CHAR_IND;
+-	scp_event.param.write_char.conhdl	 = scps_info.conhdl;
+-	scp_event.param.write_char.char_code = char_code;
+-	memcpy(&scp_event.param.write_char.value[0], value, val_len);
+-	/* send write callback */
+-	scps_info.callback(&scp_event);
++    RBLE_SCPS_EVENT scp_event;
++    scp_event.type = RBLE_SCP_EVENT_SERVER_CHG_CHAR_IND;
++    scp_event.param.write_char.conhdl    = scps_info.conhdl;
++    scp_event.param.write_char.char_code = char_code;
++    memcpy(&scp_event.param.write_char.value[0], value, val_len);
++    /* send write callback */
++    scps_info.callback(&scp_event);
+ }
+ 
+ static RBLE_STATUS scps_set_data(uint16_t val_hdl, uint8_t *data, uint16_t data_len)
+ {
+-	RBLE_STATUS result;
+-	RBLE_GATT_SET_DATA set_data;
+-	
+-	set_data.val_len = data_len;
+-	set_data.val_hdl = val_hdl;
+-	memcpy(&set_data.value[0], data, data_len);
+-	
+-	scps_info.set_data_hdl[scps_info.wp] = val_hdl;
+-	scps_info.wp = (scps_info.wp + 1) % DATA_EVENT_MAX;
+-	
+-	result = RBLE_GATT_Set_Data(&set_data);
+-	
+-	return result;
++    RBLE_STATUS result;
++    RBLE_GATT_SET_DATA set_data;
++    
++    set_data.val_len = data_len;
++    set_data.val_hdl = val_hdl;
++    memcpy(&set_data.value[0], data, data_len);
++    
++    scps_info.set_data_hdl[scps_info.wp] = val_hdl;
++    scps_info.wp = (uint16_t)(scps_info.wp + 1) % DATA_EVENT_MAX;
++    
++    result = RBLE_GATT_Set_Data(&set_data);
++    
++    return result;
+ }
+ 
+ static void scps_send_response(uint16_t att_hdl, RBLE_STATUS result)
+ {
+-	RBLE_GATT_WRITE_RESP wr_resp;
+-	
+-	if(result != RBLE_OK)
+-	{
+-		wr_resp.att_code = RBLE_ATT_ERR_APP_ERROR;
+-	}
+-	else
+-	{
+-		wr_resp.att_code = RBLE_ATT_ERR_NO_ERROR;
+-	}
+-	wr_resp.conhdl   = scps_info.conhdl;
+-	wr_resp.att_hdl  = att_hdl;
+-	RBLE_GATT_Write_Response(&wr_resp);
+-	
+-	return;
++    RBLE_GATT_WRITE_RESP wr_resp;
++    
++    if(result != RBLE_OK)
++    {
++        wr_resp.att_code = RBLE_ATT_ERR_APP_ERROR;
++    }
++    else
++    {
++        wr_resp.att_code = RBLE_ATT_ERR_NO_ERROR;
++    }
++    wr_resp.conhdl   = scps_info.conhdl;
++    wr_resp.att_hdl  = att_hdl;
++    RBLE_GATT_Write_Response(&wr_resp);
++    
++    return;
+ }
+ 
+ static void gatt_callback( RBLE_GATT_EVENT *event )
+ {
+-	RBLE_STATUS result = RBLE_OK;
+-	RBLE_SCPS_EVENT		 scp_event;
+-	uint16_t tmp_data,tmp_rp,val_len;
+-	
+-	switch(event->type)
+-	{
+-		case RBLE_GATT_EVENT_HANDLE_VALUE_CFM:
+-			/* send indicate complete event */
+-			scp_event.type = RBLE_SCP_EVENT_SERVER_SEND_IND_COMP;
+-			scp_event.param.send_ind.conhdl = scps_info.conhdl;
+-			scp_event.param.send_ind.status = event->param.handle_value_cfm.status;
+-			scps_info.callback(&scp_event);
+-			break;
+-		case RBLE_GATT_EVENT_WRITE_CMD_IND:
+-			val_len = 0;
+-			switch(event->param.write_cmd_ind.elmt)
+-			{
+-				case SCS_HDL_NOTIFY_CFG:
+-					memcpy(&tmp_data, &event->param.write_cmd_ind.value[0], 2);
+-					if((tmp_data & RBLE_SCP_START_IND) == 0)
+-					{
+-						val_len = 2;
+-					}
+-					break;
+-				case SCS_HDL_IND_CFG:
+-					memcpy(&tmp_data, &event->param.write_cmd_ind.value[0], 2);
+-					if((tmp_data & RBLE_SCP_START_NTF) == 0)
+-					{
+-						val_len = 2;
+-					}
+-					break;
+-				case SCS_HDL_INTERVAL_VAL:
+-					val_len = 2;
+-					break;
+-				case SCS_HDL_NOTIFY_LEN_VAL:
+-				case SCS_HDL_IND_LEN_VAL:
+-					val_len = 1;
+-					break;
+-				default:
+-					/* could't come here */
+-					break;
+-			}
+-			if(val_len != 0)
+-			{
+-				/* update data base */
+-				scps_info.event_data = *event;
+-				result = scps_set_data(event->param.write_cmd_ind.elmt, &event->param.write_cmd_ind.value[0], val_len);
+-			}
+-			if((result != RBLE_OK) || (val_len == 0))
+-			{
+-				if(event->param.write_cmd_ind.resp == TRUE)
+-				{
+-					/* send error response */
+-					scps_send_response(event->param.write_cmd_ind.elmt, RBLE_ERR);
+-				}
+-			}
+-			break;
+-		case RBLE_GATT_EVENT_SET_DATA_CMP:
+-			tmp_rp = scps_info.rp;
+-			/* update read point */
+-			scps_info.rp = (scps_info.rp + 1) % DATA_EVENT_MAX;
+-			
+-			result = event->param.set_data_cmp.status;
+-			switch(scps_info.set_data_hdl[tmp_rp])
+-			{
+-				case SCS_HDL_NOTIFY_CFG:
+-					if (scps_info.status == SCPS_STATUS_CONNECTED)
+-					{
+-						if(result == RBLE_OK)
+-						{
+-							/* send write event to app */
+-							scps_send_chg_IndNtf(RBLE_SCP_SCS_NTF_CFG, &scps_info.event_data.param.write_cmd_ind.value[0]);
+-						}
+-						/* send error response */
+-						if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
+-						{
+-							scps_send_response(scps_info.set_data_hdl[tmp_rp], result);
+-						}
+-					}
+-					else
+-					{
+-						if(result == RBLE_OK)
+-						{
+-							/* set indicate client configuration */
+-							result = scps_set_data(SCS_HDL_IND_CFG, (uint8_t*)&scps_info.ind_en, 2);
+-						}
+-						else
+-						{
+-							/* enable complete callback */
+-							scps_send_enable_complete(result);
+-						}
+-					}
+-					break;
+-				case SCS_HDL_IND_CFG:
+-					if (scps_info.status == SCPS_STATUS_CONNECTED)
+-					{
+-						if(result == RBLE_OK)
+-						{
+-							/* send write event to app */
+-							scps_send_chg_IndNtf(RBLE_SCP_SCS_IND_CFG, &scps_info.event_data.param.write_cmd_ind.value[0]);
+-						}
+-						/* send response */
+-						if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
+-						{
+-							scps_send_response(scps_info.set_data_hdl[tmp_rp], result);
+-						}
+-					}
+-					else
+-					{
+-						/* enable complete callback */
+-						scps_send_enable_complete(result);
+-					}
+-					break;
+-				case SCS_HDL_INTERVAL_VAL:
+-					if(result == RBLE_OK)
+-					{
+-						scps_send_chg_char(RBLE_SCP_SCS_INTERVAL, &scps_info.event_data.param.write_cmd_ind.value[0], 2);
+-					}
+-					/* send response */
+-					if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
+-					{
+-						scps_send_response(scps_info.set_data_hdl[tmp_rp], result);
+-					}
+-					break;
+-				case SCS_HDL_NOTIFY_LEN_VAL:
+-					if(result == RBLE_OK)
+-					{
+-						scps_send_chg_char(RBLE_SCP_SCS_NTF_LEN, &scps_info.event_data.param.write_cmd_ind.value[0], 1);
+-					}
+-					/* send response */
+-					if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
+-					{
+-						scps_send_response(scps_info.set_data_hdl[tmp_rp], result);
+-					}
+-					break;
+-				case SCS_HDL_IND_LEN_VAL:
+-					if(result == RBLE_OK)
+-					{
+-						scps_send_chg_char(RBLE_SCP_SCS_IND_LEN, &scps_info.event_data.param.write_cmd_ind.value[0], 1);
+-					}
+-					/* send response */
+-					if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
+-					{
+-						scps_send_response(scps_info.set_data_hdl[tmp_rp], result);
+-					}
+-					break;
+-				case SCS_HDL_NOTIFY_VAL:
+-					if(result == RBLE_OK)
+-					{
+-						RBLE_GATT_NOTIFY_REQ notify;
+-						/* send notify */
+-						notify.conhdl  = scps_info.conhdl;
+-						notify.charhdl = SCS_HDL_NOTIFY_VAL;
+-						result = RBLE_GATT_Notify_Request(&notify);
+-					}
+-					/* notify complete event */
+-					scp_event.type = RBLE_SCP_EVENT_SERVER_SEND_NOTIFY_COMP;
+-					scp_event.param.send_notify.conhdl = scps_info.conhdl;
+-					scp_event.param.send_notify.status = result;
+-					scps_info.callback(&scp_event);
+-					break;
+-				case SCS_HDL_IND_VAL:
+-					if(result == RBLE_OK)
+-					{
+-						RBLE_GATT_INDICATE_REQ  ind;
+-						/* send notify */
+-						ind.conhdl  = scps_info.conhdl;
+-						ind.charhdl = SCS_HDL_IND_VAL;
+-						result = RBLE_GATT_Indicate_Request(&ind);
+-					}
+-					else
+-					{
+-						/* send indicate complete event */
+-						scp_event.type = RBLE_SCP_EVENT_SERVER_SEND_IND_COMP;
+-						scp_event.param.send_ind.conhdl = scps_info.conhdl;
+-						scp_event.param.send_ind.status = result;
+-						scps_info.callback(&scp_event);
+-					}
+-					break;
+-				default:
+-					break;
+-			}
+-			break;
+-		case RBLE_GATT_EVENT_RESP_TIMEOUT:
+-		case RBLE_GATT_EVENT_COMMAND_DISALLOWED_IND:
+-		default:
+-			break;
+-	}
++    RBLE_STATUS result = RBLE_OK;
++    RBLE_SCPS_EVENT      scp_event;
++    uint16_t val_len;
++    
++    switch(event->type)
++    {
++        case RBLE_GATT_EVENT_HANDLE_VALUE_CFM:
++            /* send indicate complete event */
++            scp_event.type = RBLE_SCP_EVENT_SERVER_SEND_IND_COMP;
++            scp_event.param.send_ind.conhdl = scps_info.conhdl;
++            scp_event.param.send_ind.status = event->param.handle_value_cfm.status;
++            scps_info.callback(&scp_event);
++            break;
++        case RBLE_GATT_EVENT_WRITE_CMD_IND:
++            val_len = 0;
++            switch(event->param.write_cmd_ind.elmt)
++            {
++                case SCS_HDL_SERVICE1_SV1_CHAR1_NTF_CFG:
++                    {
++                        uint16_t tmp_data;
++                        memcpy(&tmp_data, &event->param.write_cmd_ind.value[0], 2);
++                        if((tmp_data & RBLE_SCP_START_IND) == 0)
++                        {
++                            val_len = 2;
++                        }
++                    }
++                    break;
++
++                case SCS_HDL_SERVICE1_SV1_CHAR2_NTF_CFG:
++                    {
++                        uint16_t tmp_data;
++                        memcpy(&tmp_data, &event->param.write_cmd_ind.value[0], 2);
++                        if((tmp_data & RBLE_SCP_START_IND) == 0)
++                        {
++                            val_len = 2;
++                        }
++                    }
++                    break;
++
++                case SCS_HDL_SERVICE1_SV1_CHAR3_W_VAL:
++                    val_len = event->param.write_cmd_ind.size;
++                    break;
++
++                
++#if 0
++                case SCS_HDL_SERVICE1_SV1_NTF_VAL:
++                    val_len = event->param.write_cmd_ind.size;
++                    break;
++#endif
++
++
++                default:
++                    /* could't come here */
++                    break;
++            }
++            if(val_len != 0)
++            {
++                /* update data base */
++                scps_info.event_data = *event;
++                result = scps_set_data(event->param.write_cmd_ind.elmt, &event->param.write_cmd_ind.value[0], val_len);
++            }
++            if((result != RBLE_OK) || (val_len == 0))
++            {
++                if(event->param.write_cmd_ind.resp == TRUE)
++                {
++                    /* send error response */
++                    scps_send_response(event->param.write_cmd_ind.elmt, RBLE_ERR);
++                }
++            }
++            break;
++            
++        case RBLE_GATT_EVENT_SET_DATA_CMP:
++            result = event->param.set_data_cmp.status;
++            switch(scps_info.set_data_hdl[scps_info.rp])
++            {
++                case SCS_HDL_SERVICE1_SV1_CHAR1_NTF_CFG:
++                    if (scps_info.status == SCPS_STATUS_CONNECTED)
++                    {
++                        if(result == RBLE_OK)
++                        {
++                            /* send write event to app */
++                            service1_scps_send_chg_IndNtf(RBLE_SCP_SCS_NTF_CFG, &scps_info.event_data.param.write_cmd_ind.value[0]);
++                        }
++                        /* send error response */
++                        if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
++                        {
++                            scps_send_response(scps_info.set_data_hdl[scps_info.rp], result);
++                        }
++                    }
++                    else
++                    {
++                        /* enable complete callback */
++                        scps_send_enable_complete(result);
++                    }
++                    break;
++
++                case SCS_HDL_SERVICE1_SV1_CHAR1_NTF_VAL:
++                    if(result == RBLE_OK)
++                    {
++                        RBLE_GATT_NOTIFY_REQ notify;
++                        /* send notify */
++                        notify.conhdl  = scps_info.conhdl;
++                        notify.charhdl = SCS_HDL_SERVICE1_SV1_CHAR1_NTF_VAL;
++                        result = RBLE_GATT_Notify_Request(&notify);
++                    }
++                    /* notify complete event */
++                    scp_event.type = RBLE_SCP_EVENT_SERVER_SEND_NOTIFY_COMP;
++                    scp_event.param.send_notify.conhdl = scps_info.conhdl;
++                    scp_event.param.send_notify.status = result;
++                    scps_info.callback(&scp_event);
++                    break;
++
++                case SCS_HDL_SERVICE1_SV1_CHAR2_NTF_CFG:
++                    if (scps_info.status == SCPS_STATUS_CONNECTED)
++                    {
++                        if(result == RBLE_OK)
++                        {
++                            /* send write event to app */
++                            service1_scps_send_chg_IndNtf(RBLE_SCP_SCS_NTF_CFG, &scps_info.event_data.param.write_cmd_ind.value[0]);
++                        }
++                        /* send error response */
++                        if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
++                        {
++                            scps_send_response(scps_info.set_data_hdl[scps_info.rp], result);
++                        }
++                    }
++                    else
++                    {
++                        /* enable complete callback */
++                        scps_send_enable_complete(result);
++                    }
++                    break;
++
++                case SCS_HDL_SERVICE1_SV1_CHAR2_NTF_VAL:
++                    if(result == RBLE_OK)
++                    {
++                        RBLE_GATT_NOTIFY_REQ notify;
++                        /* send notify */
++                        notify.conhdl  = scps_info.conhdl;
++                        notify.charhdl = SCS_HDL_SERVICE1_SV1_CHAR2_NTF_VAL;
++                        result = RBLE_GATT_Notify_Request(&notify);
++                    }
++                    /* notify complete event */
++                    scp_event.type = RBLE_SCP_EVENT_SERVER_SEND_NOTIFY_COMP;
++                    scp_event.param.send_notify.conhdl = scps_info.conhdl;
++                    scp_event.param.send_notify.status = result;
++                    scps_info.callback(&scp_event);
++                    break;
++
++                case SCS_HDL_SERVICE1_SV1_CHAR3_W_VAL:
++                    if(result == RBLE_OK)
++                    {
++                        scps_send_chg_char(RBLE_SCP_SCS_CMD, &scps_info.event_data.param.write_cmd_ind.value[0], (uint8_t)scps_info.event_data.param.write_cmd_ind.size);
++                    }
++                    /* send response */
++                    if(scps_info.event_data.param.write_cmd_ind.resp == TRUE)
++                    {
++                        scps_send_response(scps_info.set_data_hdl[scps_info.rp], result);
++                    }
++                    break;
++
++                
++
++                default:
++                    break;
++            }
++
++            /* update read point */
++            scps_info.rp = (uint16_t)(scps_info.rp + 1) % DATA_EVENT_MAX;
++
++            break;
++        case RBLE_GATT_EVENT_RESP_TIMEOUT:
++        case RBLE_GATT_EVENT_COMMAND_DISALLOWED_IND:
++        default:
++            break;
++    }
+ }
+-
+ #endif /* #ifdef USE_SAMPLE_PROFILE */
